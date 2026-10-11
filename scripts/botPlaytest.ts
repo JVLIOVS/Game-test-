@@ -1,6 +1,7 @@
 // Fait jouer un robot simple pour vérifier les règles et l'équilibrage.
 // Lancer : npx tsx scripts/botPlaytest.ts
 import { createGame, step } from '../src/game/simulation';
+import { chooseCard } from '../src/game/systems/progression';
 import type { GameState, PlayerInput } from '../src/game/types';
 
 const DT = 1 / 60;
@@ -36,12 +37,17 @@ const state = createGame();
 const counts: Record<string, number> = {};
 const log: string[] = [];
 for (let i = 0; i < (MINUTES * 60) / DT && state.status === 'playing'; i++) {
+  if (state.choice) {
+    const card = state.choice[Math.floor(Math.random() * state.choice.length)];
+    log.push(`${state.time.toFixed(0).padStart(4)}s niveau ${state.hero.level} → carte ${card} (choix : ${state.choice.join(', ')})`);
+    chooseCard(state, card);
+  }
   step(state, bot(state), DT);
   for (const ev of state.events) {
     counts[ev.type] = (counts[ev.type] ?? 0) + 1;
     const time = state.time.toFixed(0).padStart(4);
     if (ev.type === 'built') log.push(`${time}s construit ${JSON.stringify(ev.action)}`);
-    if (ev.type === 'nightStart' || ev.type === 'dayStart' || ev.type === 'heroDied' || ev.type === 'gameOver' || ev.type === 'structureDestroyed') {
+    if (ev.type === 'bossSpawn' || ev.type === 'bossKilled' || ev.type === 'nightStart' || ev.type === 'dayStart' || ev.type === 'heroDied' || ev.type === 'gameOver' || ev.type === 'structureDestroyed') {
       const house = state.structures.find((s) => s.kind === 'house');
       log.push(`${time}s ${ev.type} ${JSON.stringify(ev)} baraque=${house?.hp.toFixed(0)}/${house?.maxHp} bois=${state.inventory.wood}`);
     }
@@ -50,4 +56,5 @@ for (let i = 0; i < (MINUTES * 60) / DT && state.status === 'playing'; i++) {
 }
 console.log(log.join('\n'));
 console.log('\nÉvénements :', counts);
-console.log('Fin :', state.status, '| temps', state.time.toFixed(0), 's | nuits', state.cycle.night, '| zombies tués', state.stats.zombiesKilled, '| bâtiments', state.structures.length);
+console.log('Atouts :', JSON.stringify(state.perks));
+console.log('Fin :', state.status, '| niveau', state.hero.level, '| boss', state.bossesKilled, '| temps', state.time.toFixed(0), 's | nuits', state.cycle.night, '| zombies tués', state.stats.zombiesKilled, '| bâtiments', state.structures.length);

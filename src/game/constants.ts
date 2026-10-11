@@ -64,7 +64,7 @@ export const NIGHT_SPAWN_SPREAD = 12; // les zombies arrivent sur 12 s
 
 // Zombies (la nuit n renforce chaque valeur)
 export const zombieWave = (night: number) => ({
-  count: 3 + night * 2,
+  count: 4 + night * 3,
   hp: 26 + night * 9,
   speed: Math.min(95, 52 + night * 4),
   damage: 7 + night,
@@ -76,3 +76,19 @@ export const ZOMBIE_WOOD_DROP = 2;
 
 export const GRAVITY = 900;
 export const MAX_PARTICLES = 260;
+
+// Progression pendant la partie (XP → niveaux → cartes)
+export const xpToNext = (level: number) => 4 + level * 3;
+export const GEM_PICKUP_RADIUS = 18;
+export const GEM_PULL_SPEED = 520;
+
+// Boss de fin de manche
+export const bossStats = (round: number) => ({
+  hp: 260 + (round - 1) * 220,
+  speed: 42 + Math.min(20, round * 2),
+  damage: 22 + round * 4,
+});
+export const BOSS_RADIUS = 28;
+export const BOSS_GEMS = 12;
+export const BOSS_GEM_VALUE = 3;
+export const BOSS_WOOD = (round: number) => 10 + round * 5;

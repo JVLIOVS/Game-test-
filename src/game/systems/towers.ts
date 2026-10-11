@@ -1,4 +1,5 @@
 import { ARROW_SPEED, TOWER_DAMAGE, TOWER_FIRE_INTERVAL, TOWER_RANGE } from '../constants';
+import { PERK_VALUES, damageMult } from '../data/perks';
 import type { GameState } from '../types';
 import { damageZombie } from './combat';
 import { dist } from './common';
@@ -20,7 +21,7 @@ export function updateTowers(state: GameState, dt: number) {
       }
     }
     if (!best) continue;
-    s.cooldown = TOWER_FIRE_INTERVAL;
+    s.cooldown = TOWER_FIRE_INTERVAL / PERK_VALUES.architect.towerRate[state.perks.architect];
     const sx = s.x;
     const sy = s.y - TOWER_TOP;
     const d = dist(sx, sy, best.x, best.y - 20) || 1;
@@ -30,7 +31,7 @@ export function updateTowers(state: GameState, dt: number) {
       vx: ((best.x - sx) / d) * ARROW_SPEED,
       vy: ((best.y - 20 - sy) / d) * ARROW_SPEED,
       life: 1.2,
-      damage: TOWER_DAMAGE,
+      damage: Math.round(TOWER_DAMAGE * damageMult(state)),
       targetId: best.id,
     });
   }

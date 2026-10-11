@@ -3,7 +3,15 @@ import Animated, { FadeIn, ZoomIn } from 'react-native-reanimated';
 import { t } from '../i18n';
 import { FONT } from './fonts';
 
-export function GameOver({ nights, zombies, onRetry }: { nights: number; zombies: number; onRetry: () => void }) {
+interface Props {
+  nights: number;
+  zombies: number;
+  bosses: number;
+  level: number;
+  onRetry: () => void;
+}
+
+export function GameOver({ nights, zombies, bosses, level, onRetry }: Props) {
   return (
     <Animated.View entering={FadeIn.duration(400)} style={styles.backdrop}>
       <Animated.View entering={ZoomIn.delay(250).springify().damping(13)} style={styles.card}>
@@ -11,6 +19,8 @@ export function GameOver({ nights, zombies, onRetry }: { nights: number; zombies
         <View style={styles.stats}>
           <Text style={styles.stat}>{t('gameover.nights', { n: nights })}</Text>
           <Text style={styles.stat}>{t('gameover.zombies', { n: zombies })}</Text>
+          <Text style={styles.stat}>{t('gameover.bosses', { n: bosses })}</Text>
+          <Text style={styles.stat}>{t('gameover.level', { n: level })}</Text>
         </View>
         <Pressable
           onPress={onRetry}

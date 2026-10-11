@@ -13,6 +13,7 @@ import {
   WORKSHOP_HP,
   WORKSHOP_RADIUS,
 } from '../constants';
+import { PERK_VALUES } from '../data/perks';
 import { FX_COLORS } from '../fxColors';
 import type { GameState, Pad, PadAction, Structure, StructureKind } from '../types';
 import { LAYOUT, WALL_SIDES, wallPadPosition, wallSegments } from '../world/layout';
@@ -35,7 +36,8 @@ function stats(kind: StructureKind, level: number) {
 }
 
 export function addStructure(state: GameState, kind: StructureKind, slot: string, x: number, y: number, level = 1) {
-  const { radius, hp } = stats(kind, level);
+  const { radius } = stats(kind, level);
+  const hp = Math.round(stats(kind, level).hp * (1 + PERK_VALUES.architect.hpBonus[state.perks.architect]));
   const s: Structure = { id: nextId(state), kind, slot, x, y, radius, hp, maxHp: hp, level, hitFlash: 0, pop: 0, cooldown: 0 };
   state.structures.push(s);
   return s;
@@ -117,7 +119,7 @@ function complete(state: GameState, pad: Pad) {
     const house = getHouse(state);
     if (house) {
       house.level = action.level;
-      house.maxHp = house.hp = HOUSE_HP[action.level];
+      house.maxHp = house.hp = Math.round(HOUSE_HP[action.level] * (1 + PERK_VALUES.architect.hpBonus[state.perks.architect]));
       house.pop = 0;
       spawnBurst(state, house.x, house.y, 40, 20, 'confetti', FX_COLORS.confetti, 1.4);
     }

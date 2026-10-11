@@ -14,7 +14,14 @@ Une seule carte, ta base au centre, la forêt autour.
 - **Fin de partie** : si la baraque tombe. Écran de bilan et bouton « Rejouer ».
 - Particules, secousses d'écran, vibrations, chiffres de dégâts, annonces animées, textes FR / EN.
 
-Tester dans un navigateur : ajouter `#riche` (200 bois), `#nuit` (la nuit tombe tout de suite) ou `#nuit-riche` à l'adresse.
+**Atouts (étape 3)** : tuer des zombies laisse des gemmes d'XP. À chaque niveau, le jeu se met en pause et propose 3 cartes tirées au sort parmi 10 atouts :
+- 4 armes automatiques : arc, haches tournoyantes, bombes, éclair ;
+- 6 bonus : vigueur, rapidité, force, aimant, bûcheron, architecte.
+
+Chaque atout a 3 évolutions. L'évolution 2 se débloque après le 1er boss, l'évolution 3 après le 2e.
+Chaque nuit se termine par un **boss** : le battre valide la manche (grosse récompense en XP et en bois).
+
+Tester dans un navigateur : ajouter à l'adresse `#riche` (200 bois), `#nuit` (la nuit tombe tout de suite), `#cartes` (un choix d'atout), `#boss` (le boss arrive), `#armes` (les 4 armes). Combinables : `#boss-armes`.
 
 `npm run playtest` fait jouer un robot dans la simulation et affiche le déroulé (utile pour l'équilibrage).
 
@@ -24,10 +31,10 @@ Tester dans un navigateur : ajouter `#riche` (200 bois), `#nuit` (la nuit tombe 
 |---|---|---|
 | 1 | Héros qui bouge et récolte du bois | ✅ |
 | 2 | Base à construire avec le bois, vagues de zombies la nuit, mort et coffre | ✅ |
-| 3 | Pierre et nourriture, faim, nouveaux emplacements (ferme, entrepôt) | Expo Go |
-| 4 | Fabrication : 10 recettes (outils, armes, armures) | Expo Go |
-| 5 | Niveaux du héros et 3 compétences | Expo Go |
-| 6 | Sauvegarde, missions quotidiennes, récompense de connexion | Expo Go |
+| 3 | XP, cartes d'atouts (10 atouts × 3 évolutions), boss de fin de manche | ✅ |
+| 4 | Micro-objectifs, XP de compte, skins et atouts à débloquer (avec sauvegarde) | Expo Go |
+| 5 | Pierre et nourriture, faim, nouveaux emplacements (ferme, entrepôt) | Expo Go |
+| 6 | Missions quotidiennes, récompense de connexion | Expo Go |
 | 7 | Tutoriel de 60 secondes | Expo Go |
 | 8 | Premier build TestFlight | TestFlight |
 | 9 | Pass mensuel, packs, écran d'offre (RevenueCat) | TestFlight |
@@ -41,7 +48,8 @@ src/
     types.ts       État du jeu (sérialisable : base des sauvegardes et des raids V2)
     constants.ts   Équilibrage
     simulation.ts  createGame() / step(state, input, dt)
-    systems/       Héros, combat, arbres, construction, zombies, tours, cycle jour/nuit, effets
+    data/          Catalogue des atouts (perks.ts)
+    systems/       Héros, combat, armes, XP, arbres, construction, zombies, tours, cycle jour/nuit, effets
     world/         Carte, génération, plan de la base
   render/      Dessin Skia (sprites générés par code, remplaçables par des images)
   input/       Joystick virtuel + clavier (test navigateur)

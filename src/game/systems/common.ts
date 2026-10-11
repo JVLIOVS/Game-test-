@@ -10,6 +10,7 @@ export function nextId(state: GameState) {
 
 export function gain(state: GameState, resource: ResourceId, amount: number, x: number, y: number) {
   state.inventory[resource] += amount;
+  if (resource === 'wood') state.stats.woodGathered += amount;
   state.events.push({ type: 'resourceGained', resource, amount });
   spawnText(state, x, y, `+${amount}`, FX_COLORS.textWood, { log: resource === 'wood' });
 }

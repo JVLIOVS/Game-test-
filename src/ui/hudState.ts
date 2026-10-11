@@ -1,3 +1,4 @@
+import { xpToNext } from '../game/constants';
 import type { GameState } from '../game/types';
 import { getHouse } from '../game/systems/build';
 
@@ -15,11 +16,21 @@ export interface HudState {
   status: 'playing' | 'gameover';
   nightsSurvived: number;
   zombiesKilled: number;
+  level: number;
+  xpRatio: number;
+  /** Vie du boss (0..1), ou -1 s'il n'y en a pas. */
+  bossHp: number;
+  bossesKilled: number;
+  /** Cartes proposées, séparées par des virgules ("" si aucun choix). */
+  choice: string;
+  /** Niveau actuel de chaque carte proposée, dans le même ordre. */
+  choiceLevels: string;
 }
 
 export function readHud(state: GameState): HudState {
   const house = getHouse(state);
   const c = state.cycle;
+  const boss = state.zombies.find((z) => z.boss);
   return {
     wood: state.inventory.wood,
     heroHp: Math.round((state.hero.hp / state.hero.maxHp) * 50) / 50,
@@ -33,6 +44,14 @@ export function readHud(state: GameState): HudState {
     status: state.status,
     nightsSurvived: Math.max(0, c.phase === 'day' ? c.night : c.night - 1),
     zombiesKilled: state.stats.zombiesKilled,
+    level: state.hero.level,
+    xpRatio: Math.round((state.hero.xp / xpToNext(state.hero.level)) * 50) / 50,
+    bossHp: boss ? Math.round((boss.hp / boss.maxHp) * 100) / 100 : -1,
+    bossesKilled: state.bossesKilled,
+    choice: state.choice ? state.choice.join(',') : '',
+    choiceLevels: state.choice
+      ? state.choice.map((c) => (c === 'heal' || c === 'woodBag' ? 0 : state.perks[c])).join(',')
+      : '',
   };
 }
 

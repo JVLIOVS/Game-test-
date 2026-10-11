@@ -3,7 +3,8 @@ import { useCallback, useEffect, useRef, useState } from 'react';
 import { Platform, StyleSheet, View, useWindowDimensions, type GestureResponderEvent } from 'react-native';
 import { useSharedValue } from 'react-native-reanimated';
 import { createGame, step } from '../game/simulation';
-import type { GameEvent } from '../game/types';
+import { chooseCard } from '../game/systems/progression';
+import type { CardId, GameEvent } from '../game/types';
 import { t } from '../i18n';
 import { createJoystick, joystickEnd, joystickMove, joystickStart, readInput } from '../input/joystick';
 import { applyDebugHash } from '../platform/debug';
@@ -13,6 +14,7 @@ import { Banner, type BannerData } from '../ui/Banner';
 import { GameOver } from '../ui/GameOver';
 import { Hint } from '../ui/Hint';
 import { Hud } from '../ui/Hud';
+import { LevelUp } from '../ui/LevelUp';
 import { readHud, sameHud, type HudState } from '../ui/hudState';
 
 const MAX_DT = 1 / 30;
@@ -109,9 +111,23 @@ export function GameScreen() {
           haptics.heavy();
           showBanner({ title: t('banner.night'), sub: t('banner.nightSub', { n: ev.night }), tone: 'night' });
           break;
-        case 'dayStart':
+        case 'roundCleared':
           haptics.success();
-          showBanner({ title: t('banner.day'), sub: t('banner.daySub'), tone: 'day' });
+          showBanner({ title: t('banner.round', { n: ev.round }), sub: ev.round <= 2 ? t('banner.evolution') : t('banner.roundSub'), tone: 'day' });
+          break;
+        case 'bossSpawn':
+          haptics.heavy();
+          showBanner({ title: t('banner.boss'), sub: t('banner.bossSub'), tone: 'bad' });
+          break;
+        case 'bossKilled':
+          haptics.heavy();
+          break;
+        case 'levelUp':
+          haptics.success();
+          break;
+        case 'bombExploded':
+        case 'lightning':
+          haptics.medium();
           break;
         case 'heroDied':
           haptics.heavy();
@@ -168,6 +184,17 @@ export function GameScreen() {
     return () => cancelAnimationFrame(raf);
   }, [width, height, fontBig, fontSmall, joystick, keys, picture, showBanner]);
 
+  const pickCard = useCallback(
+    (card: CardId) => {
+      const game = gameRef.current;
+      chooseCard(game, card);
+      joystickEnd(joystick);
+      game.events.length = 0;
+      setHud(readHud(game));
+    },
+    [joystick],
+  );
+
   const restart = useCallback(() => {
     gameRef.current = createGame();
     setBanner(null);
@@ -195,8 +222,22 @@ export function GameScreen() {
       <Hud hud={hud} />
       <Hint text={hud.heroDead ? t('respawn', { n: hud.respawnIn }) : hint ? t(hint) : null} />
       <Banner banner={banner} />
+      {hud.choice !== '' && hud.status === 'playing' && (
+        <LevelUp
+          level={hud.level}
+          cards={hud.choice.split(',') as CardId[]}
+          levels={hud.choiceLevels.split(',').map(Number)}
+          onPick={pickCard}
+        />
+      )}
       {hud.status === 'gameover' && (
-        <GameOver nights={hud.nightsSurvived} zombies={hud.zombiesKilled} onRetry={restart} />
+        <GameOver
+          nights={hud.nightsSurvived}
+          zombies={hud.zombiesKilled}
+          bosses={hud.bossesKilled}
+          level={hud.level}
+          onRetry={restart}
+        />
       )}
     </View>
   );

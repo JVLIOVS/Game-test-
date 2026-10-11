@@ -207,13 +207,14 @@ export function drawHero(canvas: SkCanvas, hero: Hero, time: number) {
 
 export function drawZombie(canvas: SkCanvas, z: Zombie) {
   const t = tintFor(z.hitFlash);
-  const skin = C.zombieSkin[z.variant % 3];
-  const shirt = C.zombieShirt[z.variant % 3];
-  const phase = Math.sin(z.walkTime * 9);
+  const skin = z.boss ? C.bossSkin : C.zombieSkin[z.variant % 3];
+  const shirt = z.boss ? C.bossShirt : C.zombieShirt[z.variant % 3];
+  const phase = Math.sin(z.walkTime * (z.boss ? 5 : 9));
   const dir = z.vx >= 0 ? 1 : -1;
 
   canvas.save();
   canvas.translate(z.x, z.y);
+  if (z.boss) canvas.scale(2.1, 2.1);
   canvas.scale(dir, 1);
   outlinedCircle(canvas, -6, -3 + phase * 3, 5, t(C.zombiePants));
   outlinedCircle(canvas, 6, -3 - phase * 3, 5, t(C.zombiePants));
@@ -238,6 +239,57 @@ export function drawZombie(canvas: SkCanvas, z: Zombie) {
   canvas.drawRRect(rrect(5, -25, 8 + reach, 5, 2.5), fill(t(skin)));
   canvas.drawRRect(rrect(2, -19, 12 + reach, 7, 3.5), fill(C.outline));
   canvas.drawRRect(rrect(3, -18, 10 + reach, 5, 2.5), fill(t(skin)));
+  if (z.boss) {
+    const crown = cachedPath('crown', (p) => {
+      p.moveTo(-10, -55);
+      p.lineTo(-10, -66);
+      p.lineTo(-4, -60);
+      p.lineTo(1, -69);
+      p.lineTo(6, -60);
+      p.lineTo(12, -66);
+      p.lineTo(12, -55);
+      p.close();
+    });
+    outlinedPath(canvas, crown, t(C.chestBand));
+  }
+  canvas.restore();
+}
+
+export function drawGem(canvas: SkCanvas, x: number, y: number, value: number, time: number) {
+  const s = value > 1 ? 1.35 : 1;
+  const bob = Math.sin(time * 5 + x) * 2;
+  const gem = cachedPath('gem', (p) => {
+    p.moveTo(0, -8);
+    p.lineTo(6, 0);
+    p.lineTo(0, 8);
+    p.lineTo(-6, 0);
+    p.close();
+  });
+  canvas.save();
+  canvas.translate(x, y - 8 + bob);
+  canvas.scale(s, s);
+  outlinedPath(canvas, gem, value > 1 ? C.gemBig : C.gem);
+  canvas.drawCircle(-1.5, -3, 1.6, fill(C.white));
+  canvas.restore();
+}
+
+/** Hache qui tourne autour du héros. */
+export function drawSpinningAxe(canvas: SkCanvas, x: number, y: number, angle: number) {
+  canvas.save();
+  canvas.translate(x, y);
+  canvas.rotate((angle * 180) / Math.PI * 3, 0, 0);
+  canvas.translate(0, 14);
+  drawAxe(canvas, 2, normal);
+  canvas.restore();
+}
+
+export function drawBomb(canvas: SkCanvas, x: number, y: number, time: number) {
+  canvas.save();
+  canvas.translate(x, y);
+  outlinedCircle(canvas, 0, 0, 9, C.outline);
+  canvas.drawCircle(-3, -3, 2.5, fill('rgba(255,255,255,0.5)'));
+  canvas.drawRect(rect(-2, -14, 4, 5), fill(C.outline));
+  canvas.drawCircle(0, -16, 3 + Math.sin(time * 30) * 1, fill('#FFB020'));
   canvas.restore();
 }
 

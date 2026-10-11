@@ -1,12 +1,16 @@
 import { ClipOp, PaintStyle, Skia, TileMode, type SkCanvas, type SkFont, type SkPaint } from '@shopify/react-native-skia';
 import { PAD_RADIUS, TOWER_RANGE } from '../game/constants';
+import { orbitPositions } from '../game/systems/weapons';
 import type { GameState, Pad } from '../game/types';
 import { t } from '../i18n';
 import type { JoystickState } from '../input/joystick';
 import { PALETTE as C, fill, stroke } from './palette';
 import {
   drawAxeIcon,
+  drawBomb,
   drawChest,
+  drawGem,
+  drawSpinningAxe,
   drawHero,
   drawHouse,
   drawHpBar,
@@ -244,9 +248,12 @@ export function drawWorld(
     drawShadow(canvas, c.x, c.y, 16, 5);
     drawables.push({ y: c.y, draw: () => drawChest(canvas, c, state.time) });
   }
+  for (const g of state.gems) {
+    if (visible(g.x, g.y)) drawGem(canvas, g.x, g.y, g.value, state.time);
+  }
   for (const z of state.zombies) {
     if (!visible(z.x, z.y)) continue;
-    drawShadow(canvas, z.x, z.y, 15, 5);
+    drawShadow(canvas, z.x, z.y, z.boss ? 34 : 15, z.boss ? 11 : 5);
     drawables.push({ y: z.y, draw: () => drawZombie(canvas, z) });
   }
   if (!hero.dead) {
@@ -255,6 +262,38 @@ export function drawWorld(
   }
   drawables.sort((a, b) => a.y - b.y);
   for (const d of drawables) d.draw();
+
+  // Haches tournoyantes
+  if (!hero.dead) for (const o of orbitPositions(state)) drawSpinningAxe(canvas, o.x, o.y, o.angle);
+
+  // Bombes en vol (ombre au sol + bombe en cloche)
+  for (const b of state.bombs) {
+    const x = b.fromX + (b.toX - b.fromX) * b.t;
+    const y = b.fromY + (b.toY - b.fromY) * b.t;
+    drawShadow(canvas, x, y + 30 * (1 - b.t), 8, 3);
+    drawBomb(canvas, x, y - Math.sin(Math.PI * b.t) * 110, state.time);
+  }
+
+  // Éclairs
+  for (const bolt of state.bolts) {
+    const a = bolt.life / 0.25;
+    let px = bolt.x;
+    let py = bolt.y - 320;
+    const glow = stroke(C.boltGlow, 12);
+    const core = stroke(C.bolt, 4);
+    glow.setAlphaf(a);
+    core.setAlphaf(a);
+    for (let k = 1; k <= 6; k++) {
+      const nx = bolt.x + (k < 6 ? Math.sin(bolt.seed + k * 2.1) * 22 : 0);
+      const ny = bolt.y - 320 + (320 * k) / 6 - 20;
+      canvas.drawLine(px, py, nx, ny, glow);
+      canvas.drawLine(px, py, nx, ny, core);
+      px = nx;
+      py = ny;
+    }
+    glow.setAlphaf(1);
+    core.setAlphaf(1);
+  }
 
   // Flèches
   for (const p of state.projectiles) {
@@ -301,6 +340,7 @@ export function drawWorld(
 
   // Barres de vie
   for (const z of state.zombies) {
+    if (z.boss) continue;
     if (z.hp < z.maxHp && visible(z.x, z.y)) drawHpBar(canvas, z.x, z.y - 66, 30, z.hp / z.maxHp, C.hpEnemy);
   }
   for (const s of state.structures) {

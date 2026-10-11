@@ -6,6 +6,7 @@ import {
   HERO_RESPAWN_TIME,
   HERO_SPEED,
 } from '../constants';
+import { PERK_VALUES } from '../data/perks';
 import { FX_COLORS } from '../fxColors';
 import type { GameState, PlayerInput } from '../types';
 import { LAYOUT } from '../world/layout';
@@ -19,13 +20,14 @@ export function updateHeroMovement(state: GameState, input: PlayerInput, dt: num
     return;
   }
   const k = 1 - Math.exp(-HERO_ACCEL * dt);
-  hero.vx += (input.moveX * HERO_SPEED - hero.vx) * k;
-  hero.vy += (input.moveY * HERO_SPEED - hero.vy) * k;
+  const speed = HERO_SPEED * (1 + PERK_VALUES.swift.speedBonus[state.perks.swift]);
+  hero.vx += (input.moveX * speed - hero.vx) * k;
+  hero.vy += (input.moveY * speed - hero.vy) * k;
   hero.x += hero.vx * dt;
   hero.y += hero.vy * dt;
 
-  const speed = Math.hypot(hero.vx, hero.vy);
-  if (speed > 15) hero.walkTime += dt * (speed / HERO_SPEED);
+  const moving = Math.hypot(hero.vx, hero.vy);
+  if (moving > 15) hero.walkTime += dt * (moving / HERO_SPEED);
   else hero.walkTime = 0;
   if (Math.abs(hero.vx) > 10 && hero.swingTime === 0) hero.dirX = hero.vx > 0 ? 1 : -1;
 
@@ -77,7 +79,7 @@ export function updateHeroLife(state: GameState, dt: number) {
     hero.respawnTimer -= dt;
     if (hero.respawnTimer <= 0) {
       hero.dead = false;
-      hero.hp = hero.maxHp = HERO_MAX_HP;
+      hero.hp = hero.maxHp = HERO_MAX_HP + PERK_VALUES.vigor.hpBonus[state.perks.vigor];
       hero.x = state.base.x + LAYOUT.heroSpawn.x;
       hero.y = state.base.y + LAYOUT.heroSpawn.y;
       spawnBurst(state, hero.x, hero.y, 0, 10, 'dust', FX_COLORS.dust, 1);

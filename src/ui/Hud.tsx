@@ -29,6 +29,7 @@ export function Hud({ hud }: { hud: HudState }) {
 
   return (
     <View pointerEvents="none" style={[styles.root, { top: insets.top + 8, left: insets.left + 12, right: insets.right + 12 }]}>
+      <View style={styles.topRow}>
       <View style={styles.column}>
         <Animated.View style={[styles.pill, woodStyle]} accessibilityLabel={`${t('resource.wood')} ${hud.wood}`}>
           <View style={styles.log}>
@@ -56,12 +57,49 @@ export function Hud({ hud }: { hud: HudState }) {
           <Bar ratio={hud.houseHp} color="#FFD25A" width={96} />
         </View>
       </View>
+      </View>
+
+      <View style={styles.xpRow}>
+        <Text style={styles.levelBadge}>{t('hud.level', { n: hud.level })}</Text>
+        <View style={styles.xpBack}>
+          <View style={[styles.xpFill, { width: `${Math.round(hud.xpRatio * 100)}%` }]} />
+        </View>
+      </View>
+
+      {hud.bossHp >= 0 && (
+        <View style={styles.bossRow}>
+          <Text style={styles.bossLabel}>{t('hud.boss')}</Text>
+          <View style={styles.bossBack}>
+            <View style={[styles.bossFill, { width: `${Math.round(hud.bossHp * 100)}%` }]} />
+          </View>
+        </View>
+      )}
     </View>
   );
 }
 
 const styles = StyleSheet.create({
-  root: { position: 'absolute', flexDirection: 'row', justifyContent: 'space-between' },
+  root: { position: 'absolute', gap: 8 },
+  topRow: { flexDirection: 'row', justifyContent: 'space-between' },
+  xpRow: { flexDirection: 'row', alignItems: 'center', gap: 8 },
+  levelBadge: {
+    color: '#2B2238',
+    backgroundColor: '#5BE0FF',
+    fontSize: 14,
+    fontFamily: FONT.bold,
+    borderRadius: 10,
+    borderWidth: 2,
+    borderColor: '#2B2238',
+    paddingHorizontal: 8,
+    paddingVertical: 1,
+    overflow: 'hidden',
+  },
+  xpBack: { flex: 1, height: 12, borderRadius: 6, backgroundColor: 'rgba(43,34,56,0.8)', padding: 2 },
+  xpFill: { height: 8, borderRadius: 4, backgroundColor: '#5BE0FF' },
+  bossRow: { alignItems: 'center', gap: 2, marginTop: 4 },
+  bossLabel: { color: '#FFB020', fontSize: 16, fontFamily: FONT.bold, textShadowColor: '#2B2238', textShadowRadius: 4 },
+  bossBack: { width: '80%', maxWidth: 320, height: 16, borderRadius: 8, backgroundColor: 'rgba(43,34,56,0.9)', padding: 3, borderWidth: 2, borderColor: '#2B2238' },
+  bossFill: { height: 6, borderRadius: 3, backgroundColor: '#FF5A5A' },
   column: { gap: 6 },
   right: { alignItems: 'flex-end' },
   row: { flexDirection: 'row', alignItems: 'center', gap: 6 },

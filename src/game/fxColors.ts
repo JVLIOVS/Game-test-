@@ -8,4 +8,8 @@ export const FX_COLORS = {
   textWood: '#FFD25A',
   textDamage: '#FFFFFF',
   textHurt: '#FF5A5A',
+  textHeal: '#7BD35A',
+  textBoss: '#FFB020',
+  fire: ['#FFB020', '#FF6B2B', '#FFE14D', '#FF3B3B'],
+  gem: '#5BE0FF',
 } as const;

@@ -1,4 +1,6 @@
 import {
+  BOSS_RADIUS,
+  bossStats,
   ZOMBIE_AGGRO_RANGE,
   ZOMBIE_ATTACK_INTERVAL,
   ZOMBIE_RADIUS,
@@ -12,13 +14,53 @@ import { damageHero } from './hero';
 
 const ATTACK_GAP = 8;
 
-export function spawnZombie(state: GameState, night: number) {
+function edgePoint(state: GameState) {
   const { width, height } = state.map;
-  const wave = zombieWave(night);
   const side = Math.floor(Math.random() * 4);
   const along = Math.random();
   const x = side === 0 ? along * width : side === 1 ? width - 20 : side === 2 ? along * width : 20;
   const y = side === 0 ? 20 : side === 1 ? along * height : side === 2 ? height - 20 : along * height;
+  return { x, y };
+}
+
+/** Le boss arrive du côté le plus proche du héros, pour qu'on le voie venir. */
+export function spawnBoss(state: GameState, round: number) {
+  const st = bossStats(round);
+  const { width, height } = state.map;
+  const hx = state.hero.x;
+  const hy = state.hero.y;
+  const candidates = [
+    { x: hx, y: 30, d: hy },
+    { x: hx, y: height - 30, d: height - hy },
+    { x: 30, y: hy, d: hx },
+    { x: width - 30, y: hy, d: width - hx },
+  ].sort((a, b) => a.d - b.d);
+  const { x, y } = candidates[0];
+  state.bossAlive = true;
+  state.zombies.push({
+    id: nextId(state),
+    x,
+    y,
+    vx: 0,
+    vy: 0,
+    radius: BOSS_RADIUS,
+    hp: st.hp,
+    maxHp: st.hp,
+    speed: st.speed,
+    damage: st.damage,
+    attackCooldown: ZOMBIE_ATTACK_INTERVAL,
+    lunge: 0,
+    hitFlash: 0,
+    walkTime: 0,
+    variant: 0,
+    boss: true,
+    orbitCooldown: 0,
+  });
+}
+
+export function spawnZombie(state: GameState, night: number) {
+  const wave = zombieWave(night);
+  const { x, y } = edgePoint(state);
   state.zombies.push({
     id: nextId(state),
     x,
@@ -35,6 +77,8 @@ export function spawnZombie(state: GameState, night: number) {
     hitFlash: 0,
     walkTime: Math.random() * 10,
     variant: Math.floor(Math.random() * 3),
+    boss: false,
+    orbitCooldown: 0,
   });
 }
 
@@ -67,11 +111,13 @@ export function updateZombies(state: GameState, dt: number) {
       const d = Math.hypot(dx, dy);
       const r = z.radius + o.radius;
       if (d < r && d > 0.001) {
-        const push = (r - d) / 2;
-        z.x += (dx / d) * push;
-        z.y += (dy / d) * push;
-        o.x -= (dx / d) * push;
-        o.y -= (dy / d) * push;
+        // Le boss pousse les autres sans bouger.
+        const share = z.boss ? 0 : o.boss ? 1 : 0.5;
+        const push = r - d;
+        z.x += (dx / d) * push * share;
+        z.y += (dy / d) * push * share;
+        o.x -= (dx / d) * push * (1 - share);
+        o.y -= (dy / d) * push * (1 - share);
       }
     }
 

@@ -104,6 +104,8 @@ export interface Hero {
   dead: boolean;
   respawnTimer: number;
   axeLevel: number;
+  level: number;
+  xp: number;
 }
 
 export interface Zombie {
@@ -123,6 +125,10 @@ export interface Zombie {
   hitFlash: number;
   walkTime: number;
   variant: number;
+  /** Boss de fin de manche : plus gros, plus lent, plus fort. */
+  boss: boolean;
+  /** Temps avant que les haches tournoyantes puissent le refrapper. */
+  orbitCooldown: number;
 }
 
 export interface Projectile {
@@ -134,6 +140,52 @@ export interface Projectile {
   damage: number;
   targetId: number;
 }
+
+/** Bombe lancée en cloche, qui explose à l'arrivée. */
+export interface Bomb {
+  fromX: number;
+  fromY: number;
+  toX: number;
+  toY: number;
+  t: number;
+  duration: number;
+  radius: number;
+  damage: number;
+}
+
+/** Éclair (effet visuel ; les dégâts sont appliqués tout de suite). */
+export interface Bolt {
+  x: number;
+  y: number;
+  life: number;
+  seed: number;
+}
+
+/** Gemme d'expérience laissée par un zombie. */
+export interface Gem {
+  id: number;
+  x: number;
+  y: number;
+  value: number;
+  /** Attirée par le héros. */
+  pulled: boolean;
+  age: number;
+}
+
+export type PerkId =
+  | 'bow'
+  | 'orbit'
+  | 'bomb'
+  | 'lightning'
+  | 'vigor'
+  | 'swift'
+  | 'strength'
+  | 'magnet'
+  | 'lumberjack'
+  | 'architect';
+
+/** Carte proposée au passage de niveau. */
+export type CardId = PerkId | 'heal' | 'woodBag';
 
 /** Coffre laissé à la mort du héros, avec tout ce qu'il portait. */
 export interface Chest {
@@ -194,6 +246,7 @@ export interface Cycle {
   night: number;
   toSpawn: number;
   spawnTimer: number;
+  bossSpawned: boolean;
   /** 0 = plein jour, 1 = nuit noire. */
   darkness: number;
 }
@@ -212,7 +265,14 @@ export type GameEvent =
   | { type: 'structureDestroyed'; kind: StructureKind }
   | { type: 'nightStart'; night: number }
   | { type: 'dayStart'; day: number }
-  | { type: 'gameOver' };
+  | { type: 'gameOver' }
+  | { type: 'levelUp'; level: number }
+  | { type: 'gemPicked' }
+  | { type: 'bossSpawn'; round: number }
+  | { type: 'bossKilled'; round: number }
+  | { type: 'roundCleared'; round: number }
+  | { type: 'bombExploded' }
+  | { type: 'lightning' };
 
 export interface GameState {
   time: number;
@@ -227,7 +287,20 @@ export interface GameState {
   padsDirty: boolean;
   zombies: Zombie[];
   projectiles: Projectile[];
+  bombs: Bomb[];
+  bolts: Bolt[];
+  gems: Gem[];
   chests: Chest[];
+  /** Niveau de chaque atout (0 = pas pris). */
+  perks: Record<PerkId, number>;
+  /** Chronomètres des armes automatiques. */
+  weaponTimers: { bow: number; bomb: number; lightning: number; orbitAngle: number };
+  /** Cartes proposées en ce moment (le jeu est en pause tant qu'on n'a pas choisi). */
+  choice: CardId[] | null;
+  /** Passages de niveau en attente de choix. */
+  pendingLevelUps: number;
+  bossesKilled: number;
+  bossAlive: boolean;
   hero: Hero;
   inventory: Inventory;
   cycle: Cycle;
@@ -237,7 +310,7 @@ export interface GameState {
   /** "Trauma" de secousse d'écran, 0..1. */
   trauma: number;
   nextId: number;
-  stats: { zombiesKilled: number; built: number };
+  stats: { zombiesKilled: number; built: number; bossesKilled: number; woodGathered: number };
   /** Événements produits pendant le dernier pas, consommés par l'interface. */
   events: GameEvent[];
 }

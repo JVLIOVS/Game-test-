@@ -1,4 +1,5 @@
 import { TREE_FALL_TIME, TREE_GROW_TIME, TREE_HP, TREE_REGROW_TIME, WOOD_FELL_BONUS, WOOD_PER_HIT } from '../constants';
+import { PERK_VALUES } from '../data/perks';
 import { FX_COLORS } from '../fxColors';
 import type { GameState, Tree } from '../types';
 import { gain } from './common';
@@ -11,7 +12,8 @@ export function hitTree(state: GameState, tree: Tree) {
   spawnBurst(state, tree.x, tree.y, 55 * tree.size, 3, 'leaf', FX_COLORS.leaves, 0.6);
   state.events.push({ type: 'treeHit' });
   addTrauma(state, 0.12);
-  gain(state, 'wood', WOOD_PER_HIT, tree.x, tree.y - 30);
+  const lj = state.perks.lumberjack;
+  gain(state, 'wood', WOOD_PER_HIT * PERK_VALUES.lumberjack.woodPerHit[lj], tree.x, tree.y - 30);
 
   if (tree.hp <= 0) {
     tree.state = 'falling';
@@ -20,7 +22,7 @@ export function hitTree(state: GameState, tree: Tree) {
     state.events.push({ type: 'treeFelled' });
     addTrauma(state, 0.35);
     spawnBurst(state, tree.x, tree.y, 60 * tree.size, 14, 'leaf', FX_COLORS.leaves, 1.1);
-    gain(state, 'wood', WOOD_FELL_BONUS, tree.x, tree.y - 50);
+    gain(state, 'wood', Math.max(WOOD_FELL_BONUS, PERK_VALUES.lumberjack.fellBonus[lj]), tree.x, tree.y - 50);
   }
 }
 
