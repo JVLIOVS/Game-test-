@@ -4,8 +4,10 @@ import type { CardId, GameState, PerkId } from '../types';
 // Tant qu'on a moins de 3 atouts, les cartes proposent des atouts nouveaux ou des évolutions.
 // Avec 3 atouts, les cartes ne proposent plus que leurs évolutions (3 phases chacun).
 // La phase n demande d'avoir battu n - 1 boss.
+// Après la phase 3, l'atout continue de monter en étoiles (★) : il y a toujours une carte utile.
 
-export const PERK_MAX_LEVEL = 3;
+export const PERK_PHASES = 3;
+export const PERK_MAX_LEVEL = PERK_PHASES + 20;
 export const PERK_SLOTS = 3;
 
 export const PERK_IDS: PerkId[] = ['bow', 'orbit', 'bomb', 'lightning', 'engineer'];
@@ -29,8 +31,16 @@ export function canTake(state: GameState, id: PerkId) {
   const current = state.perks[id];
   if (current === 0 && ownedPerks(state).length >= PERK_SLOTS) return false;
   const next = current + 1;
-  return next <= PERK_MAX_LEVEL && state.bossesKilled >= bossesRequired(next);
+  return next <= PERK_MAX_LEVEL && state.bossesKilled >= bossesRequired(Math.min(next, PERK_PHASES));
 }
+
+/** Phase visible de l'atout (1 à 3). */
+export const perkPhase = (level: number) => Math.min(level, PERK_PHASES);
+/** Étoiles gagnées après la phase 3. */
+export const perkStars = (level: number) => Math.max(0, level - PERK_PHASES);
+/** Chaque étoile : +20 % de dégâts et des tirs un peu plus fréquents. */
+export const starDamage = (level: number) => 1 + 0.2 * perkStars(level);
+export const starRate = (level: number) => 1 + 0.08 * perkStars(level);
 
 /** Tire 3 cartes au hasard parmi les atouts disponibles. */
 export function drawCards(state: GameState, count = 3): CardId[] {

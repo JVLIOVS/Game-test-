@@ -1,7 +1,7 @@
 import { Skia, type SkCanvas, type SkPath } from '@shopify/react-native-skia';
 import { SWING_DURATION, TREE_FALL_TIME, TREE_GROW_TIME, bossStats } from '../game/constants';
 import { EQUIP_TIER_COLORS } from '../game/data/equipment';
-import type { Chest, EquipSlot, Hero, Structure, Tree, Zombie } from '../game/types';
+import type { Chest, EquipSlot, Hero, Structure, Tree, Unit, WeaponType, Zombie } from '../game/types';
 import { PALETTE as C, THEME, fill, layerAlpha, stroke } from './palette';
 
 // Sprites dessinés par code. Chaque fonction dessine à l'origine (pieds/base en 0,0),
@@ -72,9 +72,11 @@ function drawStump(canvas: SkCanvas, tree: Tree) {
   canvas.drawOval(rect(-5 * s, -13.5 * s, 10 * s, 4 * s), stroke(C.trunkLight, 1.5));
 }
 
-function drawCanopy(canvas: SkCanvas, variant: number) {
+const GOLDEN_CANOPY = ['#E0A81E', '#FFD25A', '#FFF0A0'] as const;
+
+function drawCanopy(canvas: SkCanvas, variant: number, golden = false) {
   const canopies = THEME().canopy;
-  const pal = canopies[variant % canopies.length];
+  const pal = golden ? GOLDEN_CANOPY : canopies[variant % canopies.length];
   if (variant === 1) {
     const path = cachedPath('pine', (p) => {
       for (const t of [
@@ -148,7 +150,13 @@ export function drawTree(canvas: SkCanvas, tree: Tree, time: number, heroBehind 
   canvas.scale(scale, scale);
   box(canvas, -9, -42, 18, 44, 5, C.trunk);
   canvas.drawRRect(rrect(-6, -38, 5, 36, 3), fill(C.trunkLight));
-  drawCanopy(canvas, tree.variant);
+  drawCanopy(canvas, tree.variant, tree.golden);
+  if (tree.golden) {
+    for (let i = 0; i < 3; i++) {
+      const a = time * 2 + i * 2.1;
+      canvas.drawCircle(Math.cos(a) * 30, -60 + Math.sin(a * 1.3) * 25, 3 + Math.sin(time * 8 + i) * 1.5, fill(C.white));
+    }
+  }
   canvas.restore();
 }
 
@@ -162,13 +170,68 @@ function drawAxe(canvas: SkCanvas, level: number, t: Tint) {
   canvas.drawRRect(rrect(w - 5, -36, 4, 12, 2), fill(C.white));
 }
 
-function drawSword(canvas: SkCanvas, tier: number, t: Tint) {
-  const blade = EQUIP_TIER_COLORS[tier] ?? C.axeHeads[1];
-  box(canvas, -3, -46, 6, 38, 2, t(tier >= 2 ? blade : '#D7DEE6'));
-  canvas.drawRect(rect(-1, -44, 2, 32), fill(C.white));
-  box(canvas, -9, -10, 18, 5, 2, t(tier === 1 ? C.trunk : blade));
-  box(canvas, -2.5, -6, 5, 10, 2, t(C.axeHandle));
-  if (tier >= 4) canvas.drawCircle(0, -30, 10, fill('rgba(91,224,255,0.25)'));
+
+/** Lueur de forge : blanche, puis orange, puis bleue quand l'arme est très améliorée. */
+function forgeGlow(forge: number) {
+  if (forge >= 10) return 'rgba(91,224,255,0.35)';
+  if (forge >= 6) return 'rgba(255,140,40,0.35)';
+  if (forge >= 3) return 'rgba(255,255,255,0.3)';
+  return null;
+}
+
+/** Arme principale, dessinée verticalement dans la main (poignée en 0,0). */
+export function drawMainWeapon(canvas: SkCanvas, type: WeaponType, tier: number, forge: number, t: Tint = normal) {
+  const metal = tier >= 2 ? EQUIP_TIER_COLORS[tier] : '#D7DEE6';
+  const glow = forgeGlow(forge);
+  const grow = 1 + Math.min(0.4, forge * 0.03);
+  canvas.save();
+  canvas.scale(grow, grow);
+  switch (type) {
+    case 'sword':
+      if (glow) canvas.drawCircle(0, -30, 14, fill(glow));
+      box(canvas, -3, -46, 6, 38, 2, t(metal));
+      canvas.drawRect(rect(-1, -44, 2, 32), fill(C.white));
+      box(canvas, -9, -10, 18, 5, 2, t(tier === 1 ? C.trunk : metal));
+      box(canvas, -2.5, -6, 5, 10, 2, t(C.axeHandle));
+      break;
+    case 'spear':
+      if (glow) canvas.drawCircle(0, -62, 12, fill(glow));
+      box(canvas, -2, -56, 4, 64, 2, t(C.axeHandle));
+      outlinedPath(
+        canvas,
+        cachedPath('spearTip', (p) => {
+          p.moveTo(-6, -54);
+          p.lineTo(0, -74);
+          p.lineTo(6, -54);
+          p.close();
+        }),
+        t(metal),
+      );
+      canvas.drawRect(rect(-5, -56, 10, 3), fill(C.flag));
+      break;
+    case 'hammer':
+      if (glow) canvas.drawCircle(0, -44, 18, fill(glow));
+      box(canvas, -2.5, -38, 5, 44, 2, t(C.axeHandle));
+      box(canvas, -15, -54, 30, 18, 5, t(metal));
+      canvas.drawRRect(rrect(-11, -51, 6, 12, 3), fill(C.white));
+      break;
+    case 'daggers':
+      if (glow) canvas.drawCircle(0, -18, 10, fill(glow));
+      outlinedPath(
+        canvas,
+        cachedPath('dagger', (p) => {
+          p.moveTo(-3, -6);
+          p.lineTo(0, -28);
+          p.lineTo(3, -6);
+          p.close();
+        }),
+        t(metal),
+      );
+      box(canvas, -6, -7, 12, 4, 2, t(C.outline));
+      box(canvas, -2, -4, 4, 8, 1, t(C.axeHandle));
+      break;
+  }
+  canvas.restore();
 }
 
 export function drawHero(canvas: SkCanvas, hero: Hero, time: number, gear: Record<EquipSlot, number>) {
@@ -209,21 +272,42 @@ export function drawHero(canvas: SkCanvas, hero: Hero, time: number, gear: Recor
   canvas.drawCircle(13.6, -40.5, 2.4, fill(C.outline));
   canvas.drawCircle(1, -35, 3, fill('rgba(255,110,110,0.45)'));
 
+  // La hache sert aux arbres, l'arme principale au combat. Chaque arme a son mouvement.
+  const chopping = hero.target?.kind === 'tree';
+  const type = hero.weapon.type;
+  const p = hero.swingTime > 0 ? Math.min(1, hero.swingTime / SWING_DURATION) : -1;
   let angle = -25 + Math.sin(time * 3) * 3;
-  if (hero.swingTime > 0) {
-    const p = Math.min(1, hero.swingTime / SWING_DURATION);
-    if (p < 0.4) angle = lerp(-25, -125, p / 0.4);
-    else if (p < 0.6) angle = lerp(-125, 75, (p - 0.4) / 0.2);
-    else angle = lerp(75, -25, (p - 0.6) / 0.4);
+  let thrust = 0;
+  if (p >= 0) {
+    if (chopping || type === 'sword' || type === 'hammer') {
+      const wind = !chopping && type === 'hammer' ? -150 : -125;
+      if (p < 0.4) angle = lerp(-25, wind, p / 0.4);
+      else if (p < 0.6) angle = lerp(wind, 80, (p - 0.4) / 0.2);
+      else angle = lerp(80, -25, (p - 0.6) / 0.4);
+    } else if (type === 'spear') {
+      angle = 80;
+      thrust = Math.sin(Math.PI * p) * 18;
+    } else {
+      angle = p < 0.5 ? lerp(-40, 70, p / 0.5) : lerp(70, -40, (p - 0.5) / 0.5);
+    }
+  } else if (!chopping && type === 'spear') {
+    angle = 15;
   }
   canvas.save();
-  canvas.translate(10, -20);
+  canvas.translate(10 + thrust, -20);
   canvas.rotate(angle, 0, 0);
-  // L'épée sert au combat, la hache aux arbres.
-  if (gear.sword && hero.target?.kind !== 'tree') drawSword(canvas, gear.sword, t);
-  else drawAxe(canvas, hero.axeLevel, t);
+  if (chopping) drawAxe(canvas, hero.axeLevel, t);
+  else drawMainWeapon(canvas, type, gear.sword, hero.weapon.forge, t);
   outlinedCircle(canvas, 0, 0, 4.5, t(C.skin));
   canvas.restore();
+  if (type === 'daggers' && !chopping) {
+    // Deuxième dague dans l'autre main
+    canvas.save();
+    canvas.translate(-12, -18);
+    canvas.rotate(p >= 0 ? lerp(60, -50, p) : -30, 0, 0);
+    drawMainWeapon(canvas, 'daggers', gear.sword, hero.weapon.forge, t);
+    canvas.restore();
+  }
 
   // Bouclier sur le bras arrière
   if (gear.shield) {
@@ -238,8 +322,8 @@ export function drawHero(canvas: SkCanvas, hero: Hero, time: number, gear: Recor
 
 export function drawZombie(canvas: SkCanvas, z: Zombie) {
   const t = tintFor(z.hitFlash);
-  const skin = z.boss ? C.bossSkin : C.zombieSkin[z.variant % 3];
-  const shirt = z.boss ? C.bossShirt : C.zombieShirt[z.variant % 3];
+  const skin = z.golden ? '#FFD25A' : z.boss ? C.bossSkin : C.zombieSkin[z.variant % 3];
+  const shirt = z.golden ? '#B8860B' : z.boss ? C.bossShirt : C.zombieShirt[z.variant % 3];
   const phase = Math.sin(z.walkTime * (z.boss ? 5 : 9));
   const dir = z.vx >= 0 ? 1 : -1;
 
@@ -355,11 +439,29 @@ export function drawBomb(canvas: SkCanvas, x: number, y: number, time: number, p
 }
 
 export function drawChest(canvas: SkCanvas, chest: Chest, time: number) {
-  const bob = Math.sin(time * 4) * 2;
+  const bob = chest.fall > 0 ? 0 : Math.sin(time * 4) * 2;
   canvas.save();
-  canvas.translate(chest.x, chest.y - bob);
-  box(canvas, -15, -22, 30, 22, 4, C.chest);
-  box(canvas, -16, -28, 32, 10, 5, C.plank);
+  canvas.translate(chest.x, chest.y - bob - chest.fall);
+  if (chest.kind === 'crate') {
+    if (chest.fall > 0) {
+      // Parachute
+      canvas.drawLine(-14, -24, -26, -70, stroke(C.outline, 1.5));
+      canvas.drawLine(14, -24, 26, -70, stroke(C.outline, 1.5));
+      canvas.drawArc(rect(-34, -96, 68, 52), 180, 180, true, fill(C.outline));
+      canvas.drawArc(rect(-31, -93, 62, 46), 180, 180, true, fill(C.white));
+      canvas.drawArc(rect(-31, -93, 62, 46), 225, 45, true, fill(C.flag));
+      canvas.drawArc(rect(-31, -93, 62, 46), 315, 45, true, fill(C.flag));
+    }
+    box(canvas, -16, -28, 32, 28, 3, C.plank);
+    canvas.drawLine(-14, -26, 14, -2, stroke(C.plankDark, 4));
+    canvas.drawLine(14, -26, -14, -2, stroke(C.plankDark, 4));
+    canvas.restore();
+    return;
+  }
+  const weapon = chest.kind === 'weapon';
+  if (weapon) canvas.drawCircle(0, -16, 26 + Math.sin(time * 5) * 3, fill('rgba(199,125,255,0.3)'));
+  box(canvas, -15, -22, 30, 22, 4, weapon ? '#7A3FC2' : C.chest);
+  box(canvas, -16, -28, 32, 10, 5, weapon ? '#9A5BE0' : C.plank);
   canvas.drawRect(rect(-3, -28, 6, 28), fill(C.chestBand));
   canvas.drawCircle(0, -16, 3, fill(C.outline));
   // Petite étincelle pour attirer l'œil
@@ -510,8 +612,11 @@ export function drawTower(canvas: SkCanvas, flash: number, phase = 0) {
   outlinedPath(canvas, roof, t(C.roofRed));
 }
 
-export function drawWorkshop(canvas: SkCanvas, flash: number) {
+export function drawWorkshop(canvas: SkCanvas, flash: number, time = 0) {
   const t = tintFor(flash);
+  // Cheminée de la forge, avec ses braises
+  box(canvas, 12, -70, 12, 22, 2, t(C.stoneDark));
+  canvas.drawCircle(18, -74 - (time * 20) % 10, 4, fill('rgba(255,140,40,0.6)'));
   box(canvas, -28, -34, 56, 40, 5, t(C.plank));
   const roof = cachedPath('shopRoof', (p) => {
     p.moveTo(-36, -30);
@@ -546,7 +651,123 @@ export function drawStructure(canvas: SkCanvas, s: Structure, baseX: number, bas
   canvas.scale(k, k);
   if (s.kind === 'house') drawHouse(canvas, s.level, s.hitFlash, time);
   else if (s.kind === 'tower') drawTower(canvas, s.hitFlash, towerPhase);
-  else drawWorkshop(canvas, s.hitFlash);
+  else if (s.kind === 'barracks') drawBarracks(canvas, s.level, s.hitFlash, time);
+  else if (s.kind === 'lumber') drawLumberCamp(canvas, s.level, s.hitFlash);
+  else drawWorkshop(canvas, s.hitFlash, time);
+  if (s.kind === 'barracks' || s.kind === 'lumber') drawLevelPips(canvas, s.level);
+  canvas.restore();
+}
+
+function drawLevelPips(canvas: SkCanvas, level: number) {
+  for (let i = 0; i < level; i++) {
+    const x = (i - (level - 1) / 2) * 12;
+    outlinedCircle(canvas, x, 14, 4, C.chestBand);
+  }
+}
+
+export function drawBarracks(canvas: SkCanvas, level: number, flash: number, time: number) {
+  const t = tintFor(flash);
+  const [wall, wallDark] = THEME().walls;
+  box(canvas, -32, -36, 64, 42, 5, t(wall));
+  for (let y = -26; y < 6; y += 10) canvas.drawRect(rect(-32, y, 64, 2), fill(t(wallDark)));
+  outlinedPath(
+    canvas,
+    cachedPath('barracksRoof', (p) => {
+      p.moveTo(-40, -32);
+      p.lineTo(0, -64);
+      p.lineTo(40, -32);
+      p.close();
+    }),
+    t(C.roofRed),
+  );
+  box(canvas, -10, -18, 20, 24, 8, t(C.door));
+  // Épées croisées
+  canvas.drawLine(-22, -26, -8, -8, stroke(C.outline, 5));
+  canvas.drawLine(-8, -26, -22, -8, stroke(C.outline, 5));
+  canvas.drawLine(-22, -26, -8, -8, stroke(C.axeHeads[1], 2.5));
+  canvas.drawLine(-8, -26, -22, -8, stroke(C.axeHeads[1], 2.5));
+  // Drapeau
+  canvas.drawRect(rect(26, -86, 3, 52), fill(C.outline));
+  canvas.save();
+  canvas.translate(29, -84);
+  canvas.scale(1, 1 + Math.sin(time * 5) * 0.12);
+  canvas.drawRect(rect(0, 0, 18, 12), fill(t(level >= 3 ? C.chestBand : C.flag)));
+  canvas.restore();
+}
+
+export function drawLumberCamp(canvas: SkCanvas, level: number, flash: number) {
+  const t = tintFor(flash);
+  box(canvas, -30, -34, 46, 40, 5, t(C.plank));
+  for (let y = -26; y < 6; y += 9) canvas.drawRect(rect(-30, y, 46, 2), fill(t(C.plankDark)));
+  outlinedPath(
+    canvas,
+    cachedPath('lumberRoof', (p) => {
+      p.moveTo(-38, -30);
+      p.lineTo(-7, -60);
+      p.lineTo(24, -30);
+      p.close();
+    }),
+    t(C.straw),
+  );
+  box(canvas, -14, -18, 14, 24, 6, t(C.door));
+  // Tas de bûches, plus gros à chaque niveau
+  for (let i = 0; i < 2 + level; i++) {
+    const x = 26 + (i % 2) * 8;
+    const y = 2 - Math.floor(i / 2) * 9;
+    canvas.drawRRect(rrect(x - 9, y - 5, 18, 10, 5), fill(C.outline));
+    canvas.drawRRect(rrect(x - 8, y - 4, 16, 8, 4), fill(t(C.trunk)));
+    canvas.drawCircle(x + 6, y, 3, fill(t(C.stumpTop)));
+  }
+}
+
+// ---------- Habitants du camp ----------
+
+export function drawUnit(canvas: SkCanvas, u: Unit, helmet: string) {
+  const t = tintFor(u.hitFlash);
+  const walking = u.walkTime > 0;
+  const phase = Math.sin(u.walkTime * 16);
+  canvas.save();
+  canvas.translate(u.x, u.y);
+  canvas.scale(u.dirX * 0.78, 0.78);
+  const lf = walking ? phase * 4 : 0;
+  outlinedCircle(canvas, -5, -3 + lf, 4, t(C.zombiePants));
+  outlinedCircle(canvas, 5, -3 - lf, 4, t(C.zombiePants));
+  canvas.translate(0, walking ? -Math.abs(phase) * 3 : 0);
+  const worker = u.kind === 'worker';
+  box(canvas, -11, -28, 22, 22, 8, t(worker ? '#5FA35A' : '#4A5BD6'));
+  outlinedCircle(canvas, 0, -38, 12, t(C.skin));
+  canvas.drawCircle(5, -37, 2.2, fill(C.outline));
+  if (worker) {
+    // Chapeau de paille
+    canvas.drawOval(rect(-17, -50, 34, 8), fill(C.outline));
+    canvas.drawOval(rect(-16, -49, 32, 6), fill(t(C.straw)));
+    canvas.drawRRect(rrect(-9, -58, 18, 10, 4), fill(t(C.straw)));
+    // Hache, qui s'abat pendant la coupe
+    canvas.save();
+    canvas.translate(9, -16);
+    canvas.rotate(u.state === 'chop' ? lerp(-110, 60, (u.timer / 1.1) ** 3) : -30, 0, 0);
+    canvas.scale(0.7, 0.7);
+    drawAxe(canvas, 1, t);
+    canvas.restore();
+    if (u.carry > 0) {
+      // Bûches sur le dos
+      for (let i = 0; i < Math.min(3, u.carry); i++) {
+        canvas.drawRRect(rrect(-22, -30 - i * 7, 18, 8, 4), fill(C.outline));
+        canvas.drawRRect(rrect(-21, -29 - i * 7, 16, 6, 3), fill(C.trunk));
+      }
+    }
+  } else {
+    // Casque et lance
+    canvas.drawRRect(rrect(-13, -52, 26, 13, 6), fill(C.outline));
+    canvas.drawRRect(rrect(-11, -50, 22, 10, 5), fill(t(helmet)));
+    canvas.save();
+    canvas.translate(10, -16);
+    canvas.rotate(u.state === 'fight' ? 70 + Math.sin(u.timer * 12) * 15 : 10, 0, 0);
+    canvas.scale(0.75, 0.75);
+    drawMainWeapon(canvas, 'spear', 1, 0, t);
+    canvas.restore();
+    outlinedCircle(canvas, -12, -18, 7, t(helmet));
+  }
   canvas.restore();
 }
 

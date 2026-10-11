@@ -10,6 +10,9 @@ import { updateZombies } from './systems/zombies';
 import { emptyPerks } from './data/perks';
 import { updateGems } from './systems/progression';
 import { updateWeapons } from './systems/weapons';
+import { updateSlashes } from './systems/combat';
+import { updateChests, updateHappenings } from './systems/happenings';
+import { updateUnits } from './systems/units';
 import type { GameState, PlayerInput } from './types';
 import { LAYOUT } from './world/layout';
 import { MAP, generateMap } from './world/map';
@@ -42,6 +45,11 @@ export function createGame(): GameState {
     world: 0,
     roundInWorld: 0,
     equipment: { sword: 0, shield: 0, armor: 0 },
+    units: [],
+    slashes: [],
+    happeningTimer: 30,
+    weaponOffer: null,
+    barracksTimer: 0,
     hero: {
       x: base.x + LAYOUT.heroSpawn.x,
       y: base.y + LAYOUT.heroSpawn.y,
@@ -63,6 +71,8 @@ export function createGame(): GameState {
       axeLevel: 1,
       level: 1,
       xp: 0,
+      weapon: { type: 'sword', forge: 0 },
+      comboSide: 1,
     },
     inventory: { wood: 0, stone: 0, food: 0 },
     cycle: { phase: 'day', timer: FIRST_DAY_LENGTH, night: 0, toSpawn: 0, spawnTimer: 0, bossSpawned: false, darkness: 0 },
@@ -82,7 +92,7 @@ export function createGame(): GameState {
 /** Avance la simulation d'un pas. Pur TypeScript, sans dépendance au rendu. */
 export function step(state: GameState, input: PlayerInput, dt: number) {
   // Pause pendant le choix d'une carte.
-  if (state.choice) return;
+  if (state.choice || state.weaponOffer) return;
   state.time += dt;
   if (state.status === 'playing') {
     updateCycle(state, dt);
@@ -94,6 +104,10 @@ export function step(state: GameState, input: PlayerInput, dt: number) {
     updateTowers(state, dt);
     updateWeapons(state, dt);
     updateGems(state, dt);
+    updateUnits(state, dt);
+    updateHappenings(state, dt);
+    updateChests(state, dt);
+    updateSlashes(state, dt);
     updateStructures(state, dt);
   }
   updateTrees(state, dt);

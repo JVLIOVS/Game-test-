@@ -3,8 +3,9 @@ import { StyleSheet, Text, View } from 'react-native';
 import Animated, { useAnimatedStyle, useSharedValue, withSequence, withSpring, withTiming } from 'react-native-reanimated';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { EQUIP_ICONS, EQUIP_TIER_COLORS } from '../game/data/equipment';
-import { CARD_ICONS, PERK_SLOTS } from '../game/data/perks';
-import type { CardId, EquipSlot } from '../game/types';
+import { CARD_ICONS, PERK_SLOTS, perkPhase, perkStars } from '../game/data/perks';
+import { WEAPON_ICONS } from '../game/data/weapons';
+import type { CardId, EquipSlot, WeaponType } from '../game/types';
 import { t, type TranslationKey } from '../i18n';
 import { FONT } from './fonts';
 import type { HudState } from './hudState';
@@ -80,11 +81,15 @@ export function Hud({ hud }: { hud: HudState }) {
                 {id ? (
                   <>
                     <Text style={styles.slotIcon}>{CARD_ICONS[id as CardId]}</Text>
-                    <View style={styles.slotPips}>
-                      {[1, 2, 3].map((n) => (
-                        <View key={n} style={[styles.slotPip, n <= Number(lvl) && styles.slotPipOn]} />
-                      ))}
-                    </View>
+                    {perkStars(Number(lvl)) > 0 ? (
+                      <Text style={styles.slotStars}>★{perkStars(Number(lvl))}</Text>
+                    ) : (
+                      <View style={styles.slotPips}>
+                        {[1, 2, 3].map((n) => (
+                          <View key={n} style={[styles.slotPip, n <= perkPhase(Number(lvl)) && styles.slotPipOn]} />
+                        ))}
+                      </View>
+                    )}
                   </>
                 ) : (
                   <Text style={styles.slotPlus}>+</Text>
@@ -96,9 +101,14 @@ export function Hud({ hud }: { hud: HudState }) {
         <View style={styles.slots}>
           {(['sword', 'shield', 'armor'] as EquipSlot[]).map((slot) => {
             const tier = hud[slot];
+            const isWeapon = slot === 'sword';
             return (
-              <View key={slot} style={[styles.equip, { borderColor: tier ? EQUIP_TIER_COLORS[tier] : 'rgba(255,255,255,0.25)' }, !tier && styles.slotEmpty]}>
-                <Text style={styles.equipIcon}>{EQUIP_ICONS[slot]}</Text>
+              <View
+                key={slot}
+                style={[styles.equip, { borderColor: tier ? EQUIP_TIER_COLORS[tier] : 'rgba(255,255,255,0.25)' }, !tier && !isWeapon && styles.slotEmpty]}
+              >
+                <Text style={styles.equipIcon}>{isWeapon ? WEAPON_ICONS[hud.weaponType as WeaponType] : EQUIP_ICONS[slot]}</Text>
+                {isWeapon && hud.forge > 0 && <Text style={styles.forge}>+{hud.forge}</Text>}
               </View>
             );
           })}
@@ -164,6 +174,19 @@ const styles = StyleSheet.create({
     justifyContent: 'center',
   },
   equipIcon: { fontSize: 17 },
+  slotStars: { fontSize: 11, color: '#FFD25A', fontFamily: FONT.bold, marginTop: -2 },
+  forge: {
+    position: 'absolute',
+    bottom: -8,
+    right: -10,
+    fontSize: 11,
+    color: '#2B2238',
+    fontFamily: FONT.bold,
+    backgroundColor: '#FFD25A',
+    borderRadius: 7,
+    paddingHorizontal: 4,
+    overflow: 'hidden',
+  },
   bossLabel: { color: '#FFB020', fontSize: 16, fontFamily: FONT.bold, textShadowColor: '#2B2238', textShadowRadius: 4 },
   bossBack: { width: '80%', maxWidth: 320, height: 16, borderRadius: 8, backgroundColor: 'rgba(43,34,56,0.9)', padding: 3, borderWidth: 2, borderColor: '#2B2238' },
   bossFill: { height: 6, borderRadius: 3, backgroundColor: '#FF5A5A' },

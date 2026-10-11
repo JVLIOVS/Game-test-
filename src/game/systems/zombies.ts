@@ -6,35 +6,58 @@ import {
   zombieWave,
 } from '../constants';
 import { fxRandom } from '../rng';
-import type { GameState, Structure } from '../types';
+import type { GameState, Structure, Unit, Zombie } from '../types';
 import { damageStructure, getHouse } from './build';
 import { dist, nextId, pushOut } from './common';
 import { damageHero } from './hero';
+import { damageUnit } from './units';
+import { FX_COLORS } from '../fxColors';
+import { spawnBurst } from './effects';
 
 const ATTACK_GAP = 8;
+const SOLDIER_AGGRO_RANGE = 110;
+const GOLDEN_LIFETIME = 28;
 
-function edgePoint(state: GameState) {
+/** Le zombie doré fuit le héros en zigzaguant, puis disparaît s'il n'est pas attrapé. */
+function updateGoldenZombie(state: GameState, z: Zombie, dt: number) {
+  const hero = state.hero;
+  if (z.walkTime > GOLDEN_LIFETIME) {
+    spawnBurst(state, z.x, z.y, 10, 14, 'confetti', FX_COLORS.confetti, 1);
+    state.zombies.splice(state.zombies.indexOf(z), 1);
+    return;
+  }
+  const d = dist(z.x, z.y, hero.x, hero.y) || 1;
+  const flee = d < 260 ? 1 : 0.25;
+  const wobble = Math.sin(z.walkTime * 2.3) * 0.9;
+  const ax = ((z.x - hero.x) / d) * flee + Math.cos(z.walkTime * 0.7 + z.id) * (1 - flee) + wobble * -((z.y - hero.y) / d);
+  const ay = ((z.y - hero.y) / d) * flee + Math.sin(z.walkTime * 0.7 + z.id) * (1 - flee) + wobble * ((z.x - hero.x) / d);
+  const l = Math.hypot(ax, ay) || 1;
+  const k = 1 - Math.exp(-4 * dt);
+  // Un peu plus lent que le héros quand il fuit : on peut le rattraper.
+  const speed = d < 260 ? z.speed : z.speed * 0.5;
+  z.vx += ((ax / l) * speed - z.vx) * k;
+  z.vy += ((ay / l) * speed - z.vy) * k;
+  z.x = Math.min(state.map.width - 30, Math.max(30, z.x + z.vx * dt));
+  z.y = Math.min(state.map.height - 30, Math.max(30, z.y + z.vy * dt));
+  for (const tree of state.trees) {
+    if (tree.state === 'standing') pushOut(z, z.radius, tree.x, tree.y, tree.radius);
+  }
+}
+
+/** Point d'apparition : sur un grand cercle autour de la base (la carte est très grande). */
+export function spawnPoint(state: GameState, angle = Math.random() * Math.PI * 2, distance = 850 + Math.random() * 250) {
   const { width, height } = state.map;
-  const side = Math.floor(Math.random() * 4);
-  const along = Math.random();
-  const x = side === 0 ? along * width : side === 1 ? width - 20 : side === 2 ? along * width : 20;
-  const y = side === 0 ? 20 : side === 1 ? along * height : side === 2 ? height - 20 : along * height;
-  return { x, y };
+  return {
+    x: Math.min(width - 30, Math.max(30, state.base.x + Math.cos(angle) * distance)),
+    y: Math.min(height - 30, Math.max(30, state.base.y + Math.sin(angle) * distance)),
+  };
 }
 
 /** Le boss arrive du côté le plus proche du héros, pour qu'on le voie venir. */
 export function spawnBoss(state: GameState, round: number, size: 'mini' | 'big') {
   const st = bossStats(round, size);
-  const { width, height } = state.map;
-  const hx = state.hero.x;
-  const hy = state.hero.y;
-  const candidates = [
-    { x: hx, y: 30, d: hy },
-    { x: hx, y: height - 30, d: height - hy },
-    { x: 30, y: hy, d: hx },
-    { x: width - 30, y: hy, d: width - hx },
-  ].sort((a, b) => a.d - b.d);
-  const { x, y } = candidates[0];
+  const toward = Math.atan2(state.hero.y - state.base.y, state.hero.x - state.base.x);
+  const { x, y } = spawnPoint(state, toward, 750);
   state.bossAlive = true;
   state.zombies.push({
     id: nextId(state),
@@ -55,12 +78,15 @@ export function spawnBoss(state: GameState, round: number, size: 'mini' | 'big')
     boss: true,
     bossSize: size,
     orbitCooldown: 0,
+    golden: false,
+    unitTargetId: null,
+    hunter: false,
   });
 }
 
 export function spawnZombie(state: GameState, night: number) {
   const wave = zombieWave(night, state.world);
-  const { x, y } = edgePoint(state);
+  const { x, y } = spawnPoint(state);
   state.zombies.push({
     id: nextId(state),
     x,
@@ -80,6 +106,9 @@ export function spawnZombie(state: GameState, night: number) {
     boss: false,
     bossSize: 'none',
     orbitCooldown: 0,
+    golden: false,
+    unitTargetId: null,
+    hunter: false,
   });
 }
 
@@ -88,14 +117,31 @@ export function updateZombies(state: GameState, dt: number) {
   const house = getHouse(state);
   const k = 1 - Math.exp(-6 * dt);
 
-  for (const z of state.zombies) {
+  for (const z of [...state.zombies]) {
     z.hitFlash = Math.max(0, z.hitFlash - dt * 5);
     z.lunge = Math.max(0, z.lunge - dt * 4);
     z.attackCooldown -= dt;
     z.walkTime += dt;
 
+    if (z.golden) {
+      updateGoldenZombie(state, z, dt);
+      continue;
+    }
+
     const heroDist = hero.dead ? Infinity : dist(z.x, z.y, hero.x, hero.y);
-    const target = heroDist < ZOMBIE_AGGRO_RANGE ? hero : house;
+    // Les soldats proches attirent aussi les zombies.
+    let soldier: Unit | null = null;
+    let soldierDist = SOLDIER_AGGRO_RANGE;
+    for (const u of state.units) {
+      if (u.kind !== 'soldier') continue;
+      const d = dist(z.x, z.y, u.x, u.y);
+      if (d < soldierDist) {
+        soldierDist = d;
+        soldier = u;
+      }
+    }
+    const chaseSoldier = soldier && soldierDist < heroDist;
+    const target = chaseSoldier ? soldier : heroDist < ZOMBIE_AGGRO_RANGE || (z.hunter && !hero.dead) ? hero : house;
     if (target) {
       const d = dist(z.x, z.y, target.x, target.y) || 1;
       z.vx += (((target.x - z.x) / d) * z.speed - z.vx) * k;
@@ -132,7 +178,11 @@ export function updateZombies(state: GameState, dt: number) {
     }
 
     if (z.attackCooldown > 0) continue;
-    if (heroDist - z.radius - hero.radius < ATTACK_GAP) {
+    if (chaseSoldier && soldier && soldierDist - z.radius - 10 < ATTACK_GAP) {
+      z.attackCooldown = ZOMBIE_ATTACK_INTERVAL;
+      z.lunge = 1;
+      damageUnit(state, soldier, z.damage);
+    } else if (heroDist - z.radius - hero.radius < ATTACK_GAP) {
       z.attackCooldown = ZOMBIE_ATTACK_INTERVAL;
       z.lunge = 1;
       damageHero(state, z.damage);

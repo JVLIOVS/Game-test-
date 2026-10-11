@@ -34,6 +34,10 @@ export interface Tree {
   fallDir: 1 | -1;
   variant: number;
   size: number;
+  /** Arbre doré (événement) : beaucoup plus de bois et des gemmes. */
+  golden: boolean;
+  /** Ouvrier en train de le couper (pour ne pas être deux sur le même arbre). */
+  claimedBy: number | null;
 }
 
 export interface Decor {
@@ -44,7 +48,7 @@ export interface Decor {
   size: number;
 }
 
-export type StructureKind = 'house' | 'wall' | 'tower' | 'workshop';
+export type StructureKind = 'house' | 'wall' | 'tower' | 'workshop' | 'barracks' | 'lumber';
 
 export interface Structure {
   id: number;
@@ -68,7 +72,51 @@ export interface Structure {
 export type PadAction =
   | { type: 'build'; kind: Exclude<StructureKind, 'house'>; slot: string }
   | { type: 'upgradeHouse'; level: number }
-  | { type: 'upgradeAxe'; level: number };
+  | { type: 'upgradeStructure'; slot: string; level: number }
+  | { type: 'forge'; level: number };
+
+/** Arme principale du héros : chaque type tue différemment. */
+export type WeaponType = 'sword' | 'spear' | 'hammer' | 'daggers';
+
+export interface MainWeapon {
+  type: WeaponType;
+  /** Niveau de forge (amélioré avec du bois à la forge, sans limite). */
+  forge: number;
+}
+
+/** Ouvrier (récolte le bois) ou soldat (défend la base). */
+export interface Unit {
+  id: number;
+  kind: 'worker' | 'soldier';
+  x: number;
+  y: number;
+  vx: number;
+  vy: number;
+  hp: number;
+  maxHp: number;
+  state: 'idle' | 'toTree' | 'chop' | 'return' | 'hide' | 'fight';
+  targetId: number | null;
+  carry: number;
+  timer: number;
+  walkTime: number;
+  dirX: 1 | -1;
+  hitFlash: number;
+  /** Poste de garde (soldats). */
+  post: number;
+}
+
+/** Trace visuelle d'un coup d'arme (arc d'épée, onde de marteau...). */
+export interface Slash {
+  x: number;
+  y: number;
+  angle: number;
+  kind: WeaponType;
+  life: number;
+  maxLife: number;
+  size: number;
+}
+
+export type HappeningKind = 'crate' | 'goldenTree' | 'ambush' | 'gemRain' | 'goldenZombie';
 
 /** Emplacement de construction : le héros s'y arrête et y dépose son bois. */
 export interface Pad {
@@ -106,6 +154,9 @@ export interface Hero {
   axeLevel: number;
   level: number;
   xp: number;
+  weapon: MainWeapon;
+  /** Alternance gauche/droite des dagues. */
+  comboSide: number;
 }
 
 export interface Zombie {
@@ -131,6 +182,12 @@ export interface Zombie {
   bossSize: 'none' | 'mini' | 'big';
   /** Temps avant que les haches tournoyantes puissent le refrapper. */
   orbitCooldown: number;
+  /** Zombie doré (événement) : rapide, fuit, porte une arme. */
+  golden: boolean;
+  /** Cible du zombie quand il s'en prend à un soldat. */
+  unitTargetId: number | null;
+  /** Zombie d'embuscade : il chasse le héros au lieu d'attaquer la base. */
+  hunter: boolean;
 }
 
 export interface Projectile {
@@ -191,12 +248,16 @@ export type EquipSlot = 'sword' | 'shield' | 'armor';
 export type CardId = PerkId | 'heal' | 'woodBag';
 
 /** Coffre laissé à la mort du héros, avec tout ce qu'il portait. */
+/** Coffre au sol : bois perdu à la mort, caisse larguée, ou coffre d'arme. */
 export interface Chest {
   id: number;
   x: number;
   y: number;
   wood: number;
   age: number;
+  kind: 'death' | 'crate' | 'weapon';
+  /** Caisse larguée : hauteur restante pendant la chute. */
+  fall: number;
 }
 
 export type ParticleKind = 'chip' | 'leaf' | 'dust' | 'goo' | 'confetti';
@@ -277,6 +338,10 @@ export type GameEvent =
   | { type: 'bombExploded' }
   | { type: 'lightning' }
   | { type: 'equipGained'; slot: EquipSlot; tier: number }
+  | { type: 'happening'; kind: HappeningKind }
+  | { type: 'weaponFound' }
+  | { type: 'unitSpawned'; kind: Unit['kind'] }
+  | { type: 'crit' }
   | { type: 'worldAdvance'; world: number };
 
 export interface GameState {
@@ -312,6 +377,14 @@ export interface GameState {
   roundInWorld: number;
   /** Palier de chaque équipement (0 = pas encore gagné). */
   equipment: Record<EquipSlot, number>;
+  units: Unit[];
+  slashes: Slash[];
+  /** Temps avant le prochain micro-événement. */
+  happeningTimer: number;
+  /** Arme trouvée dans un coffre : le jeu attend qu'on choisisse de la prendre ou non. */
+  weaponOffer: WeaponType | null;
+  /** Production de la caserne (temps avant le prochain soldat). */
+  barracksTimer: number;
   hero: Hero;
   inventory: Inventory;
   cycle: Cycle;

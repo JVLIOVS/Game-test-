@@ -1,5 +1,10 @@
 import {
+  BARRACKS_HP,
+  BARRACKS_RADIUS,
   COST,
+  LUMBER_HP,
+  LUMBER_RADIUS,
+  STRUCTURE_MAX_LEVEL,
   HOUSE_HP,
   HOUSE_MAX_LEVEL,
   HOUSE_RADIUS,
@@ -14,6 +19,7 @@ import {
   WORKSHOP_RADIUS,
 } from '../constants';
 import { PERK_VALUES } from '../data/perks';
+import { forgeCost } from '../data/weapons';
 import { WORLDS } from '../data/worlds';
 import { FX_COLORS } from '../fxColors';
 import type { GameState, Pad, PadAction, Structure, StructureKind } from '../types';
@@ -33,8 +39,14 @@ function stats(kind: StructureKind, level: number) {
       return { radius: TOWER_RADIUS, hp: TOWER_HP };
     case 'workshop':
       return { radius: WORKSHOP_RADIUS, hp: WORKSHOP_HP };
+    case 'barracks':
+      return { radius: BARRACKS_RADIUS, hp: BARRACKS_HP + (level - 1) * 80 };
+    case 'lumber':
+      return { radius: LUMBER_RADIUS, hp: LUMBER_HP + (level - 1) * 60 };
   }
 }
+
+export const structureLevel = (state: GameState, slot: string) => state.structures.find((s) => s.slot === slot)?.level ?? 0;
 
 export function addStructure(state: GameState, kind: StructureKind, slot: string, x: number, y: number, level = 1) {
   const { radius, hp } = stats(kind, level);
@@ -51,7 +63,7 @@ type PadSpec = Pick<Pad, 'id' | 'x' | 'y' | 'cost' | 'action'>;
 export function towerSlots(state: GameState, houseLevel: number) {
   const fromHouse = (houseLevel >= 2 ? 1 : 0) + (houseLevel >= 3 ? 1 : 0);
   const fromWorlds = 2 * Math.min(state.world, WORLDS.length - 1);
-  const fromPerk = PERK_VALUES.engineer.extraSlots[state.perks.engineer];
+  const fromPerk = PERK_VALUES.engineer.extraSlots[Math.min(3, state.perks.engineer)];
   return Math.min(LAYOUT.towers.length, fromHouse + fromWorlds + fromPerk);
 }
 
@@ -68,12 +80,25 @@ function padSpecs(state: GameState): PadSpec[] {
     specs.push({ id: `house-${level}`, ...at(LAYOUT.houseUpgradePad), cost: COST.house[level], action: { type: 'upgradeHouse', level } });
   }
 
+  // Forge : améliore l'arme principale, sans limite (le bois sert toujours).
   if (!has('workshop')) {
     specs.push({ id: 'workshop', ...at(LAYOUT.workshop), cost: COST.workshop, action: { type: 'build', kind: 'workshop', slot: 'workshop' } });
   } else {
-    const level = state.hero.axeLevel + 1;
-    if (level <= 3 && (level < 3 || houseLevel >= 2)) {
-      specs.push({ id: `axe-${level}`, ...at(LAYOUT.axePad), cost: COST.axe[level], action: { type: 'upgradeAxe', level } });
+    const level = state.hero.weapon.forge + 1;
+    specs.push({ id: `forge-${level}`, ...at(LAYOUT.axePad), cost: forgeCost(level), action: { type: 'forge', level } });
+  }
+
+  // Caserne (soldats) et cabane de bûcherons (ouvriers) : 3 niveaux chacune.
+  const producers = [
+    { slot: 'barracks', kind: 'barracks' as const, pos: LAYOUT.barracks, up: LAYOUT.barracksUpgradePad, costs: COST.barracks },
+    { slot: 'lumber', kind: 'lumber' as const, pos: LAYOUT.lumber, up: LAYOUT.lumberUpgradePad, costs: COST.lumber },
+  ];
+  for (const p of producers) {
+    const level = structureLevel(state, p.slot);
+    if (level === 0) {
+      specs.push({ id: p.slot, ...at(p.pos), cost: p.costs[1], action: { type: 'build', kind: p.kind, slot: p.slot } });
+    } else if (level < STRUCTURE_MAX_LEVEL) {
+      specs.push({ id: `${p.slot}-${level + 1}`, ...at(p.up), cost: p.costs[level + 1], action: { type: 'upgradeStructure', slot: p.slot, level: level + 1 } });
     }
   }
 
@@ -131,9 +156,18 @@ function complete(state: GameState, pad: Pad) {
       house.pop = 0;
       spawnBurst(state, house.x, house.y, 40, 20, 'confetti', FX_COLORS.confetti, 1.4);
     }
+  } else if (action.type === 'upgradeStructure') {
+    const s = state.structures.find((st) => st.slot === action.slot);
+    if (s) {
+      s.level = action.level;
+      s.maxHp = s.hp = stats(s.kind, s.level).hp;
+      s.pop = 0;
+    }
   } else {
-    state.hero.axeLevel = action.level;
+    state.hero.weapon.forge = action.level;
   }
+  // La cabane de bûcherons fournit aussi une meilleure hache au héros.
+  state.hero.axeLevel = Math.min(3, 1 + structureLevel(state, 'lumber'));
 
   state.stats.built++;
   state.padsDirty = true;

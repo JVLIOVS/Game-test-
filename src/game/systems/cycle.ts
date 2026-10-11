@@ -55,7 +55,7 @@ export function updateCycle(state: GameState, dt: number) {
     const size = state.roundInWorld >= ROUNDS_PER_WORLD ? 'big' : 'mini';
     spawnBoss(state, c.night, size);
     state.events.push({ type: 'bossSpawn', round: state.roundInWorld });
-  } else if (state.zombies.length === 0) {
+  } else if (state.zombies.every((z) => z.golden)) {
     // Boss battu et vague repoussée : manche validée, le jour se lève.
     c.phase = 'day';
     c.timer = DAY_LENGTH;

@@ -1,6 +1,6 @@
 import { ARROW_SPEED, TOWER_DAMAGE, TOWER_FIRE_INTERVAL, TOWER_RANGE } from '../constants';
 import { damageMult } from '../data/equipment';
-import { PERK_VALUES } from '../data/perks';
+import { PERK_VALUES, perkPhase, starDamage } from '../data/perks';
 import type { GameState, Zombie } from '../types';
 import { damageZombie } from './combat';
 import { dist } from './common';
@@ -9,10 +9,10 @@ import { explode } from './weapons';
 const TOWER_TOP = 58;
 
 export function updateTowers(state: GameState, dt: number) {
-  const eng = state.perks.engineer;
+  const eng = perkPhase(state.perks.engineer);
   const shots = PERK_VALUES.engineer.arrows[eng];
   const explosive = PERK_VALUES.engineer.explosive[eng] > 0;
-  const damage = Math.round(TOWER_DAMAGE * PERK_VALUES.engineer.towerDamage[eng] * damageMult(state));
+  const damage = Math.round(TOWER_DAMAGE * PERK_VALUES.engineer.towerDamage[eng] * damageMult(state) * starDamage(state.perks.engineer));
 
   for (const s of state.structures) {
     if (s.kind !== 'tower') continue;

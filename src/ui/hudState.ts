@@ -35,6 +35,10 @@ export interface HudState {
   sword: number;
   shield: number;
   armor: number;
+  weaponType: string;
+  forge: number;
+  /** Arme proposée par un coffre ("" si aucune). */
+  weaponOffer: string;
 }
 
 export function readHud(state: GameState): HudState {
@@ -70,6 +74,9 @@ export function readHud(state: GameState): HudState {
     sword: state.equipment.sword,
     shield: state.equipment.shield,
     armor: state.equipment.armor,
+    weaponType: state.hero.weapon.type,
+    forge: state.hero.weapon.forge,
+    weaponOffer: state.weaponOffer ?? '',
   };
 }
 

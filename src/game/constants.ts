@@ -14,9 +14,7 @@ export const SWING_DURATION = 0.32;
 export const SWING_HIT_AT = 0.16;
 export const SWING_COOLDOWN = 0.12;
 export const HARVEST_REACH = 26; // distance bord à bord pour frapper un arbre
-export const ATTACK_REACH = 30; // distance bord à bord pour frapper un zombie
 /** Par niveau de hache (index 1..3). */
-export const AXE_DAMAGE = [0, 12, 18, 27];
 export const AXE_SPEED = [0, 1, 1.2, 1.45];
 
 // Arbres
@@ -28,7 +26,7 @@ export const TREE_REGROW_TIME = 25;
 export const TREE_GROW_TIME = 0.6;
 
 // Base
-export const BASE_CLEARING = 370; // pas d'arbre autour de la base
+export const BASE_CLEARING = 440; // pas d'arbre autour de la base
 export const WALL_RING_RADIUS = 240;
 export const WALL_SEGMENTS_PER_SIDE = 5;
 export const WALL_SEGMENT_RADIUS = 34;
@@ -51,8 +49,14 @@ export const COST = {
   wallSide: 12,
   tower: 30,
   workshop: 15,
-  axe: [0, 0, 20, 50],
+  barracks: [0, 30, 60, 110],
+  lumber: [0, 20, 45, 90],
 };
+export const BARRACKS_RADIUS = 30;
+export const BARRACKS_HP = 200;
+export const LUMBER_RADIUS = 30;
+export const LUMBER_HP = 160;
+export const STRUCTURE_MAX_LEVEL = 3;
 
 export const PAD_RADIUS = 32;
 export const PAD_FEED_INTERVAL = 0.06; // une bûche toutes les 60 ms

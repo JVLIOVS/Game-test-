@@ -2,6 +2,7 @@
 // Lancer : npx tsx scripts/botPlaytest.ts
 import { createGame, step } from '../src/game/simulation';
 import { chooseCard } from '../src/game/systems/progression';
+import { resolveWeaponOffer } from '../src/game/systems/happenings';
 import type { GameState, PlayerInput } from '../src/game/types';
 
 const DT = 1 / 60;
@@ -42,11 +43,16 @@ for (let i = 0; i < (MINUTES * 60) / DT && state.status === 'playing'; i++) {
     log.push(`${state.time.toFixed(0).padStart(4)}s niveau ${state.hero.level} → carte ${card} (choix : ${state.choice.join(', ')})`);
     chooseCard(state, card);
   }
+  if (state.weaponOffer) {
+    log.push(`${state.time.toFixed(0).padStart(4)}s arme trouvée : ${state.weaponOffer} (prise)`);
+    resolveWeaponOffer(state, true);
+  }
   step(state, bot(state), DT);
   for (const ev of state.events) {
     counts[ev.type] = (counts[ev.type] ?? 0) + 1;
     const time = state.time.toFixed(0).padStart(4);
     if (ev.type === 'built') log.push(`${time}s construit ${JSON.stringify(ev.action)}`);
+    if (ev.type === 'happening') counts[`happening:${ev.kind}`] = (counts[`happening:${ev.kind}`] ?? 0) + 1;
     if (ev.type === 'equipGained' || ev.type === 'worldAdvance') log.push(`${state.time.toFixed(0).padStart(4)}s ${JSON.stringify(ev)}`);
     if (ev.type === 'bossSpawn' || ev.type === 'bossKilled' || ev.type === 'nightStart' || ev.type === 'dayStart' || ev.type === 'heroDied' || ev.type === 'gameOver' || ev.type === 'structureDestroyed') {
       const house = state.structures.find((s) => s.kind === 'house');
@@ -57,5 +63,5 @@ for (let i = 0; i < (MINUTES * 60) / DT && state.status === 'playing'; i++) {
 }
 console.log(log.join('\n'));
 console.log('\nÉvénements :', counts);
-console.log('Atouts :', JSON.stringify(state.perks));
+console.log('Atouts :', JSON.stringify(state.perks), '| arme', JSON.stringify(state.hero.weapon), '| unités', state.units.length, '| bois récolté', state.stats.woodGathered);
 console.log('Fin :', state.status, '| monde', state.world, '| équipement', JSON.stringify(state.equipment), '| niveau', state.hero.level, '| boss', state.bossesKilled, '| temps', state.time.toFixed(0), 's | nuits', state.cycle.night, '| zombies tués', state.stats.zombiesKilled, '| bâtiments', state.structures.length);

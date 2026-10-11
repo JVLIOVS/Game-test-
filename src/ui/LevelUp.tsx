@@ -1,6 +1,6 @@
 import { Pressable, StyleSheet, Text, View } from 'react-native';
 import Animated, { FadeIn, ZoomIn } from 'react-native-reanimated';
-import { CARD_ICONS, PERK_SLOTS } from '../game/data/perks';
+import { CARD_ICONS, PERK_PHASES, PERK_SLOTS, perkStars } from '../game/data/perks';
 import type { CardId } from '../game/types';
 import { t, type TranslationKey } from '../i18n';
 import { FONT } from './fonts';
@@ -27,11 +27,15 @@ function Card({ card, current, index, onPick }: { card: CardId; current: number;
   const instant = card === 'heal' || card === 'woodBag';
   const tone = TONES[card];
   const next = instant ? 1 : current + 1;
+  const star = !instant && next > PERK_PHASES;
+  const phase = Math.min(next, PERK_PHASES);
   const tag = instant
     ? t('card.instant')
     : current === 0
       ? t('card.new')
-      : t('card.phase', { n: next });
+      : star
+        ? t('card.star', { n: perkStars(next) })
+        : t('card.phase', { n: next });
 
   return (
     <Animated.View entering={ZoomIn.delay(120 + index * 90).springify().damping(13)}>
@@ -46,12 +50,12 @@ function Card({ card, current, index, onPick }: { card: CardId; current: number;
         <View style={styles.body}>
           <View style={styles.titleRow}>
             <Text style={styles.name} numberOfLines={1}>
-              {t(`perk.${card}.name${next}` as TranslationKey)}
+              {t(`perk.${card}.name${phase}` as TranslationKey)}
             </Text>
             <Text style={styles.tag}>{tag}</Text>
           </View>
-          <Text style={styles.desc}>{t(`perk.${card}.${next}` as TranslationKey)}</Text>
-          {!instant && (
+          <Text style={styles.desc}>{star ? t('perk.star.desc') : t(`perk.${card}.${phase}` as TranslationKey)}</Text>
+          {!instant && !star && (
             <View style={styles.pips}>
               {[1, 2, 3].map((n) => (
                 <View key={n} style={[styles.pip, n <= current && styles.pipOn, n === next && styles.pipNext]} />

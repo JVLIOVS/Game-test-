@@ -4,7 +4,8 @@ import { Platform, StyleSheet, View, useWindowDimensions, type GestureResponderE
 import { useSharedValue } from 'react-native-reanimated';
 import { createGame, step } from '../game/simulation';
 import { chooseCard } from '../game/systems/progression';
-import type { CardId, GameEvent } from '../game/types';
+import { resolveWeaponOffer } from '../game/systems/happenings';
+import type { CardId, GameEvent, WeaponType } from '../game/types';
 import { worldDef } from '../game/data/worlds';
 import { t, type TranslationKey } from '../i18n';
 import { createJoystick, joystickEnd, joystickMove, joystickStart, readInput } from '../input/joystick';
@@ -16,6 +17,7 @@ import { GameOver } from '../ui/GameOver';
 import { Hint } from '../ui/Hint';
 import { Hud } from '../ui/Hud';
 import { LevelUp } from '../ui/LevelUp';
+import { WeaponOffer } from '../ui/WeaponOffer';
 import { readHud, sameHud, type HudState } from '../ui/hudState';
 
 const MAX_DT = 1 / 30;
@@ -118,7 +120,9 @@ export function GameScreen() {
           haptics.success();
           const a = ev.action;
           if (a.type === 'upgradeHouse') showBanner({ title: t('banner.house', { level: a.level }), tone: 'good' });
-          else if (a.type === 'upgradeAxe') showBanner({ title: t('banner.axe'), tone: 'good' });
+          else if (a.type === 'forge') showBanner({ title: t('banner.axe'), sub: t('pad.forge', { level: a.level }), tone: 'good' });
+          else if (a.type === 'upgradeStructure')
+            showBanner({ title: t('banner.built'), sub: t(a.slot === 'barracks' ? 'pad.barracksUp' : 'pad.lumberUp', { level: a.level }), tone: 'good' });
           else showBanner({ title: t('banner.built'), sub: t(`pad.${a.kind}`), tone: 'good' });
           break;
         }
@@ -150,6 +154,16 @@ export function GameScreen() {
           });
           break;
         }
+        case 'happening':
+          haptics.medium();
+          showBanner({ title: t(`hap.${ev.kind}`), sub: t(`hap.${ev.kind}Sub`), tone: ev.kind === 'ambush' ? 'bad' : 'good' });
+          break;
+        case 'weaponFound':
+          haptics.success();
+          break;
+        case 'crit':
+          haptics.medium();
+          break;
         case 'worldAdvance':
           haptics.heavy();
           showBanner({
@@ -234,6 +248,16 @@ export function GameScreen() {
     [joystick],
   );
 
+  const answerOffer = useCallback(
+    (take: boolean) => {
+      const game = gameRef.current;
+      resolveWeaponOffer(game, take);
+      joystickEnd(joystick);
+      setHud(readHud(game));
+    },
+    [joystick],
+  );
+
   const restart = useCallback(() => {
     gameRef.current = createGame();
     bannerQueue.current = [];
@@ -264,7 +288,17 @@ export function GameScreen() {
       <Hud hud={hud} />
       <Hint text={hud.heroDead ? t('respawn', { n: hud.respawnIn }) : hint ? t(hint) : null} />
       <Banner banner={banner} />
-      {hud.choice !== '' && hud.status === 'playing' && (
+      {hud.weaponOffer !== '' && hud.status === 'playing' && (
+        <WeaponOffer
+          offer={hud.weaponOffer as WeaponType}
+          current={hud.weaponType as WeaponType}
+          forge={hud.forge}
+          meltWood={15 + 5 * gameRef.current.world}
+          onTake={() => answerOffer(true)}
+          onKeep={() => answerOffer(false)}
+        />
+      )}
+      {hud.choice !== '' && hud.weaponOffer === '' && hud.status === 'playing' && (
         <LevelUp
           level={hud.level}
           cards={hud.choice.split(',') as CardId[]}

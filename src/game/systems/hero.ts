@@ -65,7 +65,7 @@ export function damageHero(state: GameState, amount: number) {
   hero.swingTime = 0;
   hero.target = null;
   if (state.inventory.wood > 0) {
-    state.chests.push({ id: nextId(state), x: hero.x, y: hero.y, wood: state.inventory.wood, age: 0 });
+    state.chests.push({ id: nextId(state), x: hero.x, y: hero.y, wood: state.inventory.wood, age: 0, kind: 'death', fall: 0 });
     state.inventory.wood = 0;
   }
   spawnBurst(state, hero.x, hero.y, 10, 16, 'dust', FX_COLORS.dust, 1.4);
@@ -91,15 +91,4 @@ export function updateHeroLife(state: GameState, dt: number) {
 
   hero.sinceHurt += dt;
   if (hero.sinceHurt > HERO_REGEN_DELAY) hero.hp = Math.min(hero.maxHp, hero.hp + HERO_REGEN * dt);
-
-  // Récupérer un coffre en marchant dessus.
-  for (let i = state.chests.length - 1; i >= 0; i--) {
-    const c = state.chests[i];
-    c.age += dt;
-    if (dist(hero.x, hero.y, c.x, c.y) < hero.radius + 18) {
-      gain(state, 'wood', c.wood, c.x, c.y - 30);
-      spawnBurst(state, c.x, c.y, 10, 14, 'confetti', FX_COLORS.confetti, 1);
-      state.chests.splice(i, 1);
-    }
-  }
 }

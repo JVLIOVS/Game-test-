@@ -15,14 +15,19 @@ Une seule carte, ta base au centre, la forêt autour.
 - Particules, secousses d'écran, vibrations, chiffres de dégâts, annonces animées, textes FR / EN.
 
 **Atouts** : tuer des zombies laisse des gemmes d'XP. À chaque niveau, le jeu se met en pause et propose 3 cartes tirées au sort parmi 5 atouts : arc, haches tournoyantes, bombes, éclair, ingénieur (tourelles).
-On ne peut posséder que **3 atouts** : une fois les 3 choisis, les cartes ne proposent plus que leurs évolutions.
-Chaque atout a **3 phases**, visibles en jeu (ex. arc → arc de feu → arc de glace). La phase 2 se débloque après le 1er boss, la phase 3 après le 2e.
+On ne peut posséder que **3 atouts**. Chaque atout a **3 phases** visibles en jeu (ex. arc → arc de feu → arc de glace), puis monte sans fin en **étoiles** (★) : il y a toujours une carte utile.
+
+**Arme principale** : épée (arc large), lance (transperce une ligne), marteau (onde de choc), dagues (rapides, critiques). Les coffres d'arme (zombie doré) proposent d'en changer. La **forge** l'améliore avec du bois, sans limite.
+
+**Camp** : la cabane de **bûcherons** produit des ouvriers qui coupent et rapportent le bois tout seuls ; la **caserne** produit des soldats qui défendent la base. 3 niveaux chacune.
+
+**Micro-événements** toutes les 25 à 40 s : largage de caisse, arbre doré, embuscade, pluie de gemmes, zombie doré (qui porte une arme). Des flèches au bord de l'écran montrent où aller.
 
 **Mondes** : Ferme → Royaume → Âge industriel → Futur. Chaque monde a 3 manches : mini-boss, mini-boss, gros boss. Battre le gros boss fait changer de monde : décor, bâtiments et zombies changent, l'invasion est plus forte, et 2 tourelles de plus sont disponibles.
 
 **Équipement** : chaque manche gagnée donne une pièce du palier du monde (bois, fer, or, plasma) : épée (puissance), bouclier (défense), armure (agilité et vie). Visible sur le héros.
 
-Tester dans un navigateur, en ajoutant à l'adresse : `#riche` (200 bois), `#nuit`, `#cartes` (un choix d'atout), `#boss`, `#armes` (3 atouts), `#monde2` à `#monde4`, `#equipement`. Combinables : `#monde3-equipement-boss-armes`.
+Tester dans un navigateur, en ajoutant à l'adresse : `#riche` (200 bois), `#nuit`, `#cartes` (un choix d'atout), `#boss`, `#armes` (3 atouts), `#monde2` à `#monde4`, `#equipement`, `#camp`, `#coffre`, `#evenement`. Combinables : `#monde3-equipement-boss-armes`.
 
 `npm run playtest` fait jouer un robot dans la simulation et affiche le déroulé (utile pour l'équilibrage).
 
@@ -34,6 +39,7 @@ Tester dans un navigateur, en ajoutant à l'adresse : `#riche` (200 bois), `#nui
 | 2 | Base à construire avec le bois, vagues de zombies la nuit, mort et coffre | ✅ |
 | 3 | XP, cartes d'atouts, boss de fin de manche | ✅ |
 | 3b | 5 atouts / 3 emplacements / 3 phases visibles, 4 mondes (mini-boss, mini-boss, gros boss), épée, bouclier, armure | ✅ |
+| 3c | Étoiles d'atouts sans fin, 4 armes principales + forge, caserne et bûcherons, micro-événements, carte agrandie | ✅ |
 | 4 | Micro-objectifs, XP de compte, skins et atouts à débloquer (avec sauvegarde) | Expo Go |
 | 5 | Pierre et nourriture, faim, nouveaux emplacements (ferme, entrepôt) | Expo Go |
 | 6 | Missions quotidiennes, récompense de connexion | Expo Go |

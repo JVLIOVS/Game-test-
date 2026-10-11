@@ -1,6 +1,6 @@
 import { ARROW_SPEED } from '../constants';
 import { damageMult } from '../data/equipment';
-import { PERK_VALUES } from '../data/perks';
+import { PERK_VALUES, perkPhase, starDamage, starRate } from '../data/perks';
 import { FX_COLORS } from '../fxColors';
 import type { GameState, Zombie } from '../types';
 import { damageZombie } from './combat';
@@ -24,7 +24,7 @@ function nearestZombies(state: GameState, x: number, y: number, range: number, c
 
 /** Positions des haches tournoyantes autour du héros. */
 export function orbitPositions(state: GameState) {
-  const phase = state.perks.orbit;
+  const phase = perkPhase(state.perks.orbit);
   const n = PERK_VALUES.orbit.count[phase];
   const r = PERK_VALUES.orbit.radius[phase];
   const out: { x: number; y: number; angle: number }[] = [];
@@ -51,6 +51,7 @@ export function updateWeapons(state: GameState, dt: number) {
   const timers = state.weaponTimers;
   const mult = damageMult(state);
   const armed = !hero.dead;
+  const ph = { bow: perkPhase(p.bow), orbit: perkPhase(p.orbit), bomb: perkPhase(p.bomb), lightning: perkPhase(p.lightning) };
   timers.orbitAngle += dt * ORBIT_SPIN;
   for (const z of state.zombies) z.orbitCooldown = Math.max(0, z.orbitCooldown - dt);
 
@@ -58,9 +59,9 @@ export function updateWeapons(state: GameState, dt: number) {
   if (armed && p.bow > 0) {
     timers.bow -= dt;
     if (timers.bow <= 0) {
-      const targets = nearestZombies(state, hero.x, hero.y, BOW_RANGE, PERK_VALUES.bow.arrows[p.bow]);
+      const targets = nearestZombies(state, hero.x, hero.y, BOW_RANGE, PERK_VALUES.bow.arrows[ph.bow]);
       if (targets.length) {
-        timers.bow = PERK_VALUES.bow.interval[p.bow];
+        timers.bow = PERK_VALUES.bow.interval[ph.bow] / starRate(p.bow);
         for (const z of targets) {
           const sx = hero.x;
           const sy = hero.y - 30;
@@ -71,10 +72,10 @@ export function updateWeapons(state: GameState, dt: number) {
             vx: ((z.x - sx) / d) * ARROW_SPEED,
             vy: ((z.y - 20 - sy) / d) * ARROW_SPEED,
             life: 1.2,
-            damage: Math.round(PERK_VALUES.bow.damage[p.bow] * mult),
+            damage: Math.round(PERK_VALUES.bow.damage[ph.bow] * mult * starDamage(p.bow)),
             targetId: z.id,
-            style: p.bow === 1 ? 'bow1' : p.bow === 2 ? 'bow2' : 'bow3',
-            splash: p.bow === 3 ? 40 : 0,
+            style: ph.bow === 1 ? 'bow1' : ph.bow === 2 ? 'bow2' : 'bow3',
+            splash: ph.bow === 3 ? 40 : 0,
           });
         }
       }
@@ -83,8 +84,8 @@ export function updateWeapons(state: GameState, dt: number) {
 
   // Haches tournoyantes : plus nombreuses et plus grosses à chaque phase.
   if (armed && p.orbit > 0) {
-    const damage = Math.round(PERK_VALUES.orbit.damage[p.orbit] * mult);
-    const reach = 16 * PERK_VALUES.orbit.size[p.orbit];
+    const damage = Math.round(PERK_VALUES.orbit.damage[ph.orbit] * mult * starDamage(p.orbit));
+    const reach = 16 * PERK_VALUES.orbit.size[ph.orbit];
     for (const o of orbitPositions(state)) {
       for (const z of [...state.zombies]) {
         if (z.orbitCooldown > 0) continue;
@@ -102,7 +103,7 @@ export function updateWeapons(state: GameState, dt: number) {
     if (timers.bomb <= 0) {
       const [z] = nearestZombies(state, hero.x, hero.y, BOMB_RANGE, 1);
       if (z) {
-        timers.bomb = PERK_VALUES.bomb.interval[p.bomb];
+        timers.bomb = PERK_VALUES.bomb.interval[ph.bomb] / starRate(p.bomb);
         state.bombs.push({
           fromX: hero.x,
           fromY: hero.y - 30,
@@ -110,10 +111,10 @@ export function updateWeapons(state: GameState, dt: number) {
           toY: z.y + z.vy * 0.5,
           t: 0,
           duration: 0.55,
-          radius: PERK_VALUES.bomb.radius[p.bomb],
-          damage: Math.round(PERK_VALUES.bomb.damage[p.bomb] * mult),
-          phase: p.bomb,
-          cluster: PERK_VALUES.bomb.cluster[p.bomb] > 1 ? 3 : 0,
+          radius: PERK_VALUES.bomb.radius[ph.bomb],
+          damage: Math.round(PERK_VALUES.bomb.damage[ph.bomb] * mult * starDamage(p.bomb)),
+          phase: ph.bomb,
+          cluster: PERK_VALUES.bomb.cluster[ph.bomb] > 1 ? 3 : 0,
         });
       }
     }
@@ -148,13 +149,13 @@ export function updateWeapons(state: GameState, dt: number) {
     if (timers.lightning <= 0) {
       const inRange = state.zombies.filter((z) => dist(hero.x, hero.y, z.x, z.y) < LIGHTNING_RANGE);
       if (inRange.length) {
-        timers.lightning = PERK_VALUES.lightning.interval[p.lightning];
-        const count = Math.min(inRange.length, PERK_VALUES.lightning.strikes[p.lightning]);
+        timers.lightning = PERK_VALUES.lightning.interval[ph.lightning] / starRate(p.lightning);
+        const count = Math.min(inRange.length, PERK_VALUES.lightning.strikes[ph.lightning]);
         for (let k = 0; k < count; k++) {
           const z = inRange.splice(Math.floor(Math.random() * inRange.length), 1)[0];
-          state.bolts.push({ x: z.x, y: z.y, life: 0.25, seed: Math.random() * 1000, phase: p.lightning });
+          state.bolts.push({ x: z.x, y: z.y, life: 0.25, seed: Math.random() * 1000, phase: ph.lightning });
           spawnBurst(state, z.x, z.y, 5, 6, 'goo', ['#FFFFFF', '#BFE9FF', '#FFE14D'], 1);
-          damageZombie(state, z, Math.round(PERK_VALUES.lightning.damage[p.lightning] * mult), z.x, z.y - 1);
+          damageZombie(state, z, Math.round(PERK_VALUES.lightning.damage[ph.lightning] * mult * starDamage(p.lightning)), z.x, z.y - 1);
         }
         addTrauma(state, 0.15);
         state.events.push({ type: 'lightning' });

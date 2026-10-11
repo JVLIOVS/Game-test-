@@ -33,6 +33,10 @@ export const LAYOUT = {
   houseUpgradePad: { x: 0, y: 112 },
   workshop: { x: -130, y: 20 },
   axePad: { x: -130, y: 112 },
+  barracks: { x: 250, y: -250 },
+  barracksUpgradePad: { x: 250, y: -175 },
+  lumber: { x: -250, y: 250 },
+  lumberUpgradePad: { x: -250, y: 325 },
   /** Emplacements de tourelles, débloqués un par un (baraque, mondes, atout Ingénieur). */
   towers: [
     { slot: 'tower-1', x: 130, y: -85 },

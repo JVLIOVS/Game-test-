@@ -1,14 +1,18 @@
 import { ClipOp, PaintStyle, Skia, TileMode, type SkCanvas, type SkFont, type SkPaint } from '@shopify/react-native-skia';
 import { PAD_RADIUS, TOWER_RANGE } from '../game/constants';
 import { orbitPositions } from '../game/systems/weapons';
-import type { GameState, Pad } from '../game/types';
+import { soldierHelmet } from '../game/systems/units';
+import type { GameState, Pad, Slash } from '../game/types';
 import { t } from '../i18n';
 import type { JoystickState } from '../input/joystick';
 import { worldDef } from '../game/data/worlds';
 import { PALETTE as C, THEME, fill, setTheme, stroke } from './palette';
 import {
-  drawAxeIcon,
+  drawBarracks,
   drawBomb,
+  drawLumberCamp,
+  drawMainWeapon,
+  drawUnit,
   drawChest,
   drawGem,
   drawSpinningAxe,
@@ -37,7 +41,7 @@ export interface Fonts {
 
 const VIEW_MARGIN = 160;
 const BORDER_SPACING = 56;
-const CAMP_RADIUS = 300;
+const CAMP_RADIUS = 390;
 
 /** Zoom adapté à l'écran : plus de carte visible sur iPad. */
 function cameraScale(width: number) {
@@ -90,20 +94,30 @@ function drawOutlinedText(canvas: SkCanvas, text: string, x: number, y: number, 
 function padLabel(pad: Pad): string {
   const a = pad.action;
   if (a.type === 'upgradeHouse') return t('pad.house', { level: a.level });
-  if (a.type === 'upgradeAxe') return t('pad.axe', { level: a.level });
+  if (a.type === 'forge') return t('pad.forge', { level: a.level });
+  if (a.type === 'upgradeStructure') return t(a.slot === 'barracks' ? 'pad.barracksUp' : 'pad.lumberUp', { level: a.level });
   return t(`pad.${a.kind}`);
 }
 
-function drawPadIcon(canvas: SkCanvas, pad: Pad, time: number) {
+function drawPadIcon(canvas: SkCanvas, pad: Pad, state: GameState) {
   const a = pad.action;
+  const time = state.time;
   canvas.save();
   canvas.translate(0, 18);
   if (a.type === 'upgradeHouse') {
     canvas.scale(0.36, 0.36);
     drawHouse(canvas, a.level, 0, time);
-  } else if (a.type === 'upgradeAxe') {
-    canvas.translate(0, -16);
-    drawAxeIcon(canvas, a.level);
+  } else if (a.type === 'forge') {
+    canvas.translate(0, -2);
+    canvas.rotate(25, 0, 0);
+    canvas.scale(0.7, 0.7);
+    drawMainWeapon(canvas, state.hero.weapon.type, Math.max(1, state.equipment.sword), a.level);
+  } else if (a.type === 'upgradeStructure' || a.kind === 'barracks' || a.kind === 'lumber') {
+    const slot = a.type === 'upgradeStructure' ? a.slot : a.kind;
+    const level = a.type === 'upgradeStructure' ? a.level : 1;
+    canvas.scale(0.45, 0.45);
+    if (slot === 'barracks') drawBarracks(canvas, level, 0, time);
+    else drawLumberCamp(canvas, level, 0);
   } else if (a.kind === 'wall') {
     canvas.scale(0.6, 0.6);
     drawStakes(canvas, 1, 0, 0);
@@ -117,7 +131,7 @@ function drawPadIcon(canvas: SkCanvas, pad: Pad, time: number) {
   canvas.restore();
 }
 
-function drawPadGround(canvas: SkCanvas, pad: Pad, heroOn: boolean, dash: SkPaint, time: number) {
+function drawPadGround(canvas: SkCanvas, pad: Pad, heroOn: boolean, dash: SkPaint, state: GameState) {
   const s = 1 + pad.pulse * 0.1 + (heroOn ? 0.05 : 0);
   canvas.save();
   canvas.translate(pad.x, pad.y);
@@ -133,7 +147,7 @@ function drawPadGround(canvas: SkCanvas, pad: Pad, heroOn: boolean, dash: SkPain
     canvas.restore();
   }
   canvas.drawRRect(box, dash);
-  drawPadIcon(canvas, pad, time);
+  drawPadIcon(canvas, pad, state);
   canvas.restore();
 }
 
@@ -148,6 +162,61 @@ function drawPadLabels(canvas: SkCanvas, pad: Pad, font: SkFont) {
 }
 
 type Drawable = { y: number; draw: () => void };
+
+function drawSlash(canvas: SkCanvas, sl: Slash) {
+  const k = sl.life / sl.maxLife;
+  const deg = (sl.angle * 180) / Math.PI;
+  const paint = stroke(C.white, sl.kind === 'hammer' ? 6 : 7);
+  paint.setAlphaf(Math.min(1, k * 1.6));
+  switch (sl.kind) {
+    case 'sword': {
+      const r = sl.size * (0.75 + (1 - k) * 0.25);
+      canvas.drawArc(Skia.XYWHRect(sl.x - r, sl.y - r * 0.8, r * 2, r * 1.6), deg - 75, 150, false, paint);
+      break;
+    }
+    case 'spear': {
+      const len = sl.size * (0.6 + (1 - k) * 0.4);
+      canvas.drawLine(sl.x, sl.y, sl.x + Math.cos(sl.angle) * len, sl.y + Math.sin(sl.angle) * len * 0.8, paint);
+      break;
+    }
+    case 'hammer': {
+      const r = sl.size * (1 - k * 0.8);
+      canvas.drawOval(Skia.XYWHRect(sl.x - r, sl.y - r * 0.55, r * 2, r * 1.1), paint);
+      break;
+    }
+    case 'daggers': {
+      const s = sl.size;
+      canvas.drawLine(sl.x - s, sl.y - s, sl.x + s, sl.y + s, paint);
+      canvas.drawLine(sl.x + s, sl.y - s, sl.x - s, sl.y + s, paint);
+      break;
+    }
+  }
+  paint.setAlphaf(1);
+}
+
+function drawOffscreenArrow(canvas: SkCanvas, sx: number, sy: number, view: Viewport, color: string, time: number) {
+  const margin = 34;
+  if (sx > margin && sx < view.width - margin && sy > margin + 120 && sy < view.height - margin) return;
+  const cx = view.width / 2;
+  const cy = view.height / 2;
+  const a = Math.atan2(sy - cy, sx - cx);
+  // Position sur le bord de l'écran
+  const hw = cx - margin;
+  const hh = cy - margin - 60;
+  const k = Math.min(Math.abs(hw / Math.cos(a)), Math.abs(hh / Math.sin(a)));
+  const x = cx + Math.cos(a) * k;
+  const y = cy + 30 + Math.sin(a) * k;
+  const pulse = 1 + Math.sin(time * 6) * 0.12;
+  canvas.save();
+  canvas.translate(x, y);
+  canvas.rotate((a * 180) / Math.PI, 0, 0);
+  canvas.scale(pulse, pulse);
+  canvas.drawCircle(0, 0, 15, fill(C.outline));
+  canvas.drawCircle(0, 0, 12, fill(color));
+  canvas.drawLine(-4, -6, 5, 0, stroke(C.outline, 4));
+  canvas.drawLine(-4, 6, 5, 0, stroke(C.outline, 4));
+  canvas.restore();
+}
 
 export function drawWorld(
   canvas: SkCanvas,
@@ -230,7 +299,7 @@ export function drawWorld(
   for (const pad of state.pads) {
     if (!visible(pad.x, pad.y)) continue;
     const heroOn = !hero.dead && Math.hypot(hero.x - pad.x, hero.y - pad.y) < PAD_RADIUS + 4;
-    drawPadGround(canvas, pad, heroOn, paints.dash, state.time);
+    drawPadGround(canvas, pad, heroOn, paints.dash, state);
   }
 
   // Ombres + liste triée en profondeur
@@ -244,7 +313,7 @@ export function drawWorld(
   for (const s of state.structures) {
     if (!visible(s.x, s.y)) continue;
     if (s.kind !== 'wall') drawShadow(canvas, s.x + 6, s.y + 4, s.radius * 1.1, s.radius * 0.4);
-    drawables.push({ y: s.y, draw: () => drawStructure(canvas, s, base.x, base.y, state.time, state.perks.engineer) });
+    drawables.push({ y: s.y, draw: () => drawStructure(canvas, s, base.x, base.y, state.time, Math.min(3, state.perks.engineer)) });
   }
   for (const c of state.chests) {
     if (!visible(c.x, c.y)) continue;
@@ -259,6 +328,12 @@ export function drawWorld(
     drawShadow(canvas, z.x, z.y, z.boss ? 34 : 15, z.boss ? 11 : 5);
     drawables.push({ y: z.y, draw: () => drawZombie(canvas, z) });
   }
+  const helmet = soldierHelmet(state);
+  for (const u of state.units) {
+    if (!visible(u.x, u.y)) continue;
+    drawShadow(canvas, u.x, u.y, 11, 4);
+    drawables.push({ y: u.y, draw: () => drawUnit(canvas, u, helmet) });
+  }
   if (!hero.dead) {
     drawShadow(canvas, hero.x, hero.y, 16, 6);
     drawables.push({ y: hero.y, draw: () => drawHero(canvas, hero, state.time, state.equipment) });
@@ -266,8 +341,11 @@ export function drawWorld(
   drawables.sort((a, b) => a.y - b.y);
   for (const d of drawables) d.draw();
 
+  // Traces des coups d'arme
+  for (const sl of state.slashes) drawSlash(canvas, sl);
+
   // Haches tournoyantes
-  if (!hero.dead) for (const o of orbitPositions(state)) drawSpinningAxe(canvas, o.x, o.y, o.angle, state.perks.orbit);
+  if (!hero.dead) for (const o of orbitPositions(state)) drawSpinningAxe(canvas, o.x, o.y, o.angle, Math.min(3, state.perks.orbit));
 
   // Bombes en vol (ombre au sol + bombe en cloche)
   for (const b of state.bombs) {
@@ -362,6 +440,9 @@ export function drawWorld(
       drawHpBar(canvas, s.x, y, s.kind === 'house' ? 70 : 34, s.hp / s.maxHp, C.hpBuilding);
     }
   }
+  for (const u of state.units) {
+    if (u.hp < u.maxHp && visible(u.x, u.y)) drawHpBar(canvas, u.x, u.y - 50, 22, u.hp / u.maxHp, C.hpHero);
+  }
   if (!hero.dead && hero.hp < hero.maxHp) drawHpBar(canvas, hero.x, hero.y - 74, 34, hero.hp / hero.maxHp, C.hpHero);
 
   // Portée des tours, discrète, la nuit
@@ -411,6 +492,13 @@ export function drawWorld(
     canvas.drawCircle(0, 0, 1, paints.glow);
     canvas.restore();
   }
+
+  // Flèches au bord de l'écran vers les choses intéressantes hors champ
+  const markers: { x: number; y: number; color: string }[] = [];
+  for (const c of state.chests) markers.push({ x: c.x, y: c.y, color: c.kind === 'weapon' ? '#C77DFF' : c.kind === 'crate' ? C.white : C.chestBand });
+  for (const z of state.zombies) if (z.golden || z.boss) markers.push({ x: z.x, y: z.y, color: z.golden ? C.chestBand : C.hpEnemy });
+  for (const tr of state.trees) if (tr.golden && tr.state === 'standing') markers.push({ x: tr.x, y: tr.y, color: C.chestBand });
+  for (const m of markers) drawOffscreenArrow(canvas, toScreenX(m.x), toScreenY(m.y - 30), view, m.color, state.time);
 
   // Joystick (coordonnées écran)
   if (joystick.active) {

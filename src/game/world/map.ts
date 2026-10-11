@@ -5,10 +5,10 @@ import { TREE_HP } from '../constants';
 
 // Une seule carte : la base au centre, la forêt tout autour.
 export const MAP: MapDef = {
-  width: 1600,
-  height: 2200,
+  width: 2600,
+  height: 3400,
   seed: 1337,
-  treeCount: 90,
+  treeCount: 260,
 };
 
 const EDGE_MARGIN = 50;
@@ -40,6 +40,8 @@ export function generateMap(def: MapDef, base: Vec2): { trees: Tree[]; decor: De
       fallDir: 1,
       variant: rng.int(0, 2),
       size,
+      golden: false,
+      claimedBy: null,
     });
   }
 
