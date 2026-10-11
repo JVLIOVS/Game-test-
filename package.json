@@ -21,6 +21,7 @@
   },
   "devDependencies": {
     "@types/react": "~19.2.2",
+    "tsx": "^4.23.15",
     "typescript": "~6.0.3"
   },
   "scripts": {
@@ -30,7 +31,8 @@
     "web": "expo start --web",
     "web:setup": "setup-skia-web public",
     "web:build": "npm run web:setup && expo export --platform web",
-    "typecheck": "tsc --noEmit"
+    "typecheck": "tsc --noEmit",
+    "playtest": "tsx scripts/botPlaytest.ts"
   },
   "private": true
 }

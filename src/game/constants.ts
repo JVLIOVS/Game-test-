@@ -1,20 +1,78 @@
 // Réglages d'équilibrage. Tout ce qui se règle "au feeling" est ici.
 
+// Héros
 export const HERO_SPEED = 190; // unités / seconde
-export const HERO_ACCEL = 14; // réactivité du joystick (plus haut = plus nerveux)
+export const HERO_ACCEL = 14; // réactivité du joystick
 export const HERO_RADIUS = 14;
+export const HERO_MAX_HP = 100;
+export const HERO_REGEN = 6; // PV / s après quelques secondes sans coup
+export const HERO_REGEN_DELAY = 3;
+export const HERO_RESPAWN_TIME = 3;
 
-export const SWING_DURATION = 0.32; // durée d'un coup de hache (s)
-export const SWING_HIT_AT = 0.16; // moment de l'impact dans le coup
-export const SWING_COOLDOWN = 0.12; // pause entre deux coups
+// Coups de hache (arbres et zombies)
+export const SWING_DURATION = 0.32;
+export const SWING_HIT_AT = 0.16;
+export const SWING_COOLDOWN = 0.12;
 export const HARVEST_REACH = 26; // distance bord à bord pour frapper un arbre
+export const ATTACK_REACH = 30; // distance bord à bord pour frapper un zombie
+/** Par niveau de hache (index 1..3). */
+export const AXE_DAMAGE = [0, 12, 18, 27];
+export const AXE_SPEED = [0, 1, 1.2, 1.45];
 
+// Arbres
 export const TREE_HP = 4;
 export const WOOD_PER_HIT = 1;
 export const WOOD_FELL_BONUS = 2;
 export const TREE_FALL_TIME = 0.55;
-export const TREE_REGROW_TIME = 30;
+export const TREE_REGROW_TIME = 25;
 export const TREE_GROW_TIME = 0.6;
 
+// Base
+export const BASE_CLEARING = 320; // pas d'arbre autour de la base
+export const WALL_RING_RADIUS = 200;
+export const WALL_SEGMENTS_PER_SIDE = 4;
+export const WALL_SEGMENT_RADIUS = 34;
+export const WALL_HP = 70;
+export const HOUSE_RADIUS = 44;
+export const HOUSE_MAX_LEVEL = 4;
+export const HOUSE_HP = [0, 250, 400, 600, 850];
+export const TOWER_RADIUS = 22;
+export const TOWER_HP = 150;
+export const TOWER_RANGE = 250;
+export const TOWER_FIRE_INTERVAL = 0.85;
+export const TOWER_DAMAGE = 14;
+export const ARROW_SPEED = 650;
+export const WORKSHOP_RADIUS = 30;
+export const WORKSHOP_HP = 160;
+
+// Coûts en bois
+export const COST = {
+  house: [0, 0, 25, 60, 120],
+  wallSide: 12,
+  tower: 30,
+  workshop: 15,
+  axe: [0, 0, 20, 50],
+};
+
+export const PAD_RADIUS = 32;
+export const PAD_FEED_INTERVAL = 0.06; // une bûche toutes les 60 ms
+
+// Cycle jour / nuit
+export const FIRST_DAY_LENGTH = 55;
+export const DAY_LENGTH = 40;
+export const NIGHT_SPAWN_SPREAD = 12; // les zombies arrivent sur 12 s
+
+// Zombies (la nuit n renforce chaque valeur)
+export const zombieWave = (night: number) => ({
+  count: 3 + night * 2,
+  hp: 26 + night * 9,
+  speed: Math.min(95, 52 + night * 4),
+  damage: 7 + night,
+});
+export const ZOMBIE_RADIUS = 13;
+export const ZOMBIE_AGGRO_RANGE = 150;
+export const ZOMBIE_ATTACK_INTERVAL = 1;
+export const ZOMBIE_WOOD_DROP = 2;
+
 export const GRAVITY = 900;
-export const MAX_PARTICLES = 220;
+export const MAX_PARTICLES = 260;

@@ -1,21 +1,29 @@
-import { TREE_HP } from '../constants';
+import { BASE_CLEARING } from '../constants';
 import { createRng } from '../rng';
-import type { Decor, Tree, ZoneDef, ZoneState } from '../types';
+import type { Decor, MapDef, Tree, Vec2 } from '../types';
+import { TREE_HP } from '../constants';
 
-const SPAWN_CLEARING = 140;
+// Une seule carte : la base au centre, la forêt tout autour.
+export const MAP: MapDef = {
+  width: 1600,
+  height: 2200,
+  seed: 1337,
+  treeCount: 90,
+};
+
 const EDGE_MARGIN = 50;
 
-export function generateZone(def: ZoneDef): ZoneState {
+export function generateMap(def: MapDef, base: Vec2): { trees: Tree[]; decor: Decor[] } {
   const rng = createRng(def.seed);
   const trees: Tree[] = [];
   let id = 1;
   let attempts = 0;
 
-  while (trees.length < def.treeCount && attempts < def.treeCount * 40) {
+  while (trees.length < def.treeCount && attempts < def.treeCount * 60) {
     attempts++;
     const x = rng.range(EDGE_MARGIN, def.width - EDGE_MARGIN);
     const y = rng.range(EDGE_MARGIN + 40, def.height - EDGE_MARGIN);
-    if (Math.hypot(x - def.spawn.x, y - def.spawn.y) < SPAWN_CLEARING) continue;
+    if (Math.hypot(x - base.x, y - base.y) < BASE_CLEARING) continue;
     const size = rng.range(0.85, 1.2);
     const minDist = 70 * size;
     if (trees.some((t) => Math.hypot(t.x - x, t.y - y) < minDist)) continue;
@@ -50,5 +58,5 @@ export function generateZone(def: ZoneDef): ZoneState {
   // Les grandes taches d'herbe se dessinent en premier.
   decor.sort((a, b) => (a.kind === 'patch' ? 0 : 1) - (b.kind === 'patch' ? 0 : 1));
 
-  return { def, trees, decor };
+  return { trees, decor };
 }

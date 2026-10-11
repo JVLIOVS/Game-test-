@@ -19,6 +19,8 @@ export const setLanguage = (lang: Language) => {
   language = lang;
 };
 
-export function t(key: TranslationKey): string {
-  return dictionaries[language][key] ?? key;
+export function t(key: TranslationKey, params?: Record<string, string | number>): string {
+  let text: string = dictionaries[language][key] ?? key;
+  if (params) for (const [k, v] of Object.entries(params)) text = text.replace(`{${k}}`, String(v));
+  return text;
 }

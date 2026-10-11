@@ -16,7 +16,7 @@ export function spawnBurst(
     if (state.particles.length >= MAX_PARTICLES) state.particles.shift();
     const angle = fxRandom(0, Math.PI * 2);
     const speed = fxRandom(40, 150) * power;
-    const life = kind === 'leaf' ? fxRandom(0.9, 1.6) : fxRandom(0.5, 0.9);
+    const life = kind === 'leaf' || kind === 'confetti' ? fxRandom(0.9, 1.6) : fxRandom(0.5, 0.9);
     state.particles.push({
       x,
       y,
@@ -35,8 +35,26 @@ export function spawnBurst(
   }
 }
 
-export function spawnText(state: GameState, x: number, y: number, text: string, color: string) {
-  state.texts.push({ x: x + fxRandom(-8, 8), y, z: 40, vz: 160, life: 0.9, maxLife: 0.9, text, color });
+export function spawnText(
+  state: GameState,
+  x: number,
+  y: number,
+  text: string,
+  color: string,
+  options: { log?: boolean; size?: number } = {},
+) {
+  state.texts.push({
+    x: x + fxRandom(-8, 8),
+    y,
+    z: 40,
+    vz: 160,
+    life: 0.9,
+    maxLife: 0.9,
+    text,
+    color,
+    log: options.log ?? false,
+    size: options.size ?? 1,
+  });
 }
 
 export function addTrauma(state: GameState, amount: number) {
@@ -60,10 +78,10 @@ export function updateEffects(state: GameState, dt: number) {
       p.vy *= 1 - 3 * dt;
       continue;
     }
-    // Les feuilles planent, les copeaux tombent vite.
-    const g = p.kind === 'leaf' ? GRAVITY * 0.35 : GRAVITY;
-    p.vz -= g * dt;
-    if (p.kind === 'leaf') p.vx += Math.sin(state.time * 6 + p.rot) * 60 * dt;
+    // Les feuilles et confettis planent, les copeaux tombent vite.
+    const floaty = p.kind === 'leaf' || p.kind === 'confetti';
+    p.vz -= (floaty ? GRAVITY * 0.35 : GRAVITY) * dt;
+    if (floaty) p.vx += Math.sin(state.time * 6 + p.rot) * 60 * dt;
     p.z += p.vz * dt;
     p.rot += p.vrot * dt;
     if (p.z < 0) {
@@ -85,6 +103,12 @@ export function updateEffects(state: GameState, dt: number) {
     }
     t.vz -= 380 * dt;
     t.z = Math.max(t.z + t.vz * dt, 30);
+  }
+
+  const logs = state.flyingLogs;
+  for (let i = logs.length - 1; i >= 0; i--) {
+    logs[i].t += dt / 0.28;
+    if (logs[i].t >= 1) logs.splice(i, 1);
   }
 
   state.trauma = Math.max(0, state.trauma - dt * 1.6);

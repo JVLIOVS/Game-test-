@@ -1,16 +1,23 @@
 import { Canvas, Picture, Skia, useFont, type SkPicture } from '@shopify/react-native-skia';
-import { useEffect, useRef, useState } from 'react';
+import { useCallback, useEffect, useRef, useState } from 'react';
 import { Platform, StyleSheet, View, useWindowDimensions, type GestureResponderEvent } from 'react-native';
 import { useSharedValue } from 'react-native-reanimated';
 import { createGame, step } from '../game/simulation';
+import type { GameEvent } from '../game/types';
 import { t } from '../i18n';
 import { createJoystick, joystickEnd, joystickMove, joystickStart, readInput } from '../input/joystick';
+import { applyDebugHash } from '../platform/debug';
 import { haptics } from '../platform/haptics';
 import { drawWorld } from '../render/drawWorld';
+import { Banner, type BannerData } from '../ui/Banner';
+import { GameOver } from '../ui/GameOver';
 import { Hint } from '../ui/Hint';
 import { Hud } from '../ui/Hud';
+import { readHud, sameHud, type HudState } from '../ui/hudState';
 
 const MAX_DT = 1 / 30;
+const BANNER_TIME = 2200;
+const FONT_FILE = require('@expo-google-fonts/fredoka/700Bold/Fredoka_700Bold.ttf');
 
 function emptyPicture(): SkPicture {
   const recorder = Skia.PictureRecorder();
@@ -18,23 +25,41 @@ function emptyPicture(): SkPicture {
   return recorder.finishRecordingAsPicture();
 }
 
+type HintKey = 'hint.move' | 'hint.chop' | 'hint.build' | null;
+
 export function GameScreen() {
   const { width, height } = useWindowDimensions();
-  const font = useFont(require('@expo-google-fonts/fredoka/700Bold/Fredoka_700Bold.ttf'), 22);
+  const fontBig = useFont(FONT_FILE, 22);
+  const fontSmall = useFont(FONT_FILE, 15);
   const picture = useSharedValue<SkPicture>(emptyPicture());
 
-  const game = useRef(createGame()).current;
+  const gameRef = useRef(applyDebugHash(createGame()));
   const joystick = useRef(createJoystick()).current;
   const keys = useRef(new Set<string>()).current;
 
-  const [wood, setWood] = useState(0);
-  const [hasMoved, setHasMoved] = useState(false);
+  const [hud, setHud] = useState<HudState>(() => readHud(gameRef.current));
+  const [hint, setHint] = useState<HintKey>('hint.move');
+  const [banner, setBanner] = useState<BannerData | null>(null);
+  const bannerTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const bannerId = useRef(0);
+
+  const showBanner = useCallback((b: Omit<BannerData, 'id'>) => {
+    bannerId.current++;
+    setBanner({ ...b, id: bannerId.current });
+    if (bannerTimer.current) clearTimeout(bannerTimer.current);
+    bannerTimer.current = setTimeout(() => setBanner(null), BANNER_TIME);
+  }, []);
+
+  useEffect(() => () => {
+    if (bannerTimer.current) clearTimeout(bannerTimer.current);
+  }, []);
 
   // Clavier pour tester dans un navigateur d'ordinateur.
   useEffect(() => {
     if (Platform.OS !== 'web' || typeof window === 'undefined') return;
-    const down = (e: KeyboardEvent) => keys.add(e.key.length === 1 ? e.key.toLowerCase() : e.key);
-    const up = (e: KeyboardEvent) => keys.delete(e.key.length === 1 ? e.key.toLowerCase() : e.key);
+    const norm = (e: KeyboardEvent) => (e.key.length === 1 ? e.key.toLowerCase() : e.key);
+    const down = (e: KeyboardEvent) => keys.add(norm(e));
+    const up = (e: KeyboardEvent) => keys.delete(norm(e));
     window.addEventListener('keydown', down);
     window.addEventListener('keyup', up);
     return () => {
@@ -43,35 +68,92 @@ export function GameScreen() {
     };
   }, [keys]);
 
-  // Boucle de jeu : simulation puis enregistrement d'une image Skia.
+  // Boucle de jeu : simulation, réactions de l'interface, puis enregistrement d'une image Skia.
   useEffect(() => {
     const recorder = Skia.PictureRecorder();
     const bounds = Skia.XYWHRect(0, 0, width, height);
     const previous: SkPicture[] = [];
+    const fonts = { big: fontBig, small: fontSmall };
     let last = 0;
     let raf = 0;
-    let moved = false;
+    let lastFeedHaptic = 0;
+    let currentHud = readHud(gameRef.current);
+    const progress = { moved: false };
+
+    const onEvent = (ev: GameEvent, now: number) => {
+      switch (ev.type) {
+        case 'treeHit':
+        case 'zombieHit':
+          haptics.light();
+          break;
+        case 'treeFelled':
+        case 'zombieKilled':
+        case 'heroHurt':
+          haptics.medium();
+          break;
+        case 'padFed':
+          if (now - lastFeedHaptic > 110) {
+            lastFeedHaptic = now;
+            haptics.light();
+          }
+          break;
+        case 'built': {
+          haptics.success();
+          const a = ev.action;
+          if (a.type === 'upgradeHouse') showBanner({ title: t('banner.house', { level: a.level }), tone: 'good' });
+          else if (a.type === 'upgradeAxe') showBanner({ title: t('banner.axe'), tone: 'good' });
+          else showBanner({ title: t('banner.built'), sub: t(`pad.${a.kind}`), tone: 'good' });
+          break;
+        }
+        case 'nightStart':
+          haptics.heavy();
+          showBanner({ title: t('banner.night'), sub: t('banner.nightSub', { n: ev.night }), tone: 'night' });
+          break;
+        case 'dayStart':
+          haptics.success();
+          showBanner({ title: t('banner.day'), sub: t('banner.daySub'), tone: 'day' });
+          break;
+        case 'heroDied':
+          haptics.heavy();
+          showBanner({ title: t('banner.died'), sub: t('banner.diedSub'), tone: 'bad' });
+          break;
+        case 'gameOver':
+          haptics.error();
+          break;
+      }
+    };
 
     const frame = (now: number) => {
       const dt = last === 0 ? 1 / 60 : Math.min(MAX_DT, (now - last) / 1000);
       last = now;
+      const game = gameRef.current;
 
       const input = readInput(joystick, keys);
-      if (!moved && (input.moveX !== 0 || input.moveY !== 0)) {
-        moved = true;
-        setHasMoved(true);
-      }
+      if (!progress.moved && (input.moveX !== 0 || input.moveY !== 0)) progress.moved = true;
       step(game, input, dt);
 
-      for (const ev of game.events) {
-        if (ev.type === 'treeHit') haptics.light();
-        else if (ev.type === 'treeFelled') haptics.heavy();
-        else if (ev.type === 'resourceGained') setWood(game.inventory.wood);
-      }
+      for (const ev of game.events) onEvent(ev, now);
       game.events.length = 0;
 
+      const next = readHud(game);
+      if (!sameHud(next, currentHud)) {
+        currentHud = next;
+        setHud(next);
+      }
+      // Bulles d'aide du début de partie.
+      const nextHint: HintKey = !progress.moved
+        ? 'hint.move'
+        : game.stats.built > 0 || game.cycle.night > 0
+          ? null
+          : game.inventory.wood >= 8
+            ? 'hint.build'
+            : game.inventory.wood === 0
+              ? 'hint.chop'
+              : null;
+      setHint((h) => (h === nextHint ? h : nextHint));
+
       const canvas = recorder.beginRecording(bounds);
-      drawWorld(canvas, game, { width, height }, font, joystick);
+      drawWorld(canvas, game, { width, height }, fonts, joystick);
       const pic = recorder.finishRecordingAsPicture();
       picture.value = pic;
 
@@ -84,13 +166,16 @@ export function GameScreen() {
     };
     raf = requestAnimationFrame(frame);
     return () => cancelAnimationFrame(raf);
-  }, [width, height, font, game, joystick, keys, picture]);
+  }, [width, height, fontBig, fontSmall, joystick, keys, picture, showBanner]);
+
+  const restart = useCallback(() => {
+    gameRef.current = createGame();
+    setBanner(null);
+  }, []);
 
   const onStart = (e: GestureResponderEvent) => joystickStart(joystick, e.nativeEvent.pageX, e.nativeEvent.pageY);
   const onMove = (e: GestureResponderEvent) => joystickMove(joystick, e.nativeEvent.pageX, e.nativeEvent.pageY);
   const onEnd = () => joystickEnd(joystick);
-
-  const hint = !hasMoved ? t('hint.move') : wood === 0 ? t('hint.chop') : null;
 
   return (
     <View
@@ -107,8 +192,12 @@ export function GameScreen() {
           <Picture picture={picture} />
         </Canvas>
       </View>
-      <Hud wood={wood} />
-      <Hint text={hint} />
+      <Hud hud={hud} />
+      <Hint text={hud.heroDead ? t('respawn', { n: hud.respawnIn }) : hint ? t(hint) : null} />
+      <Banner banner={banner} />
+      {hud.status === 'gameover' && (
+        <GameOver nights={hud.nightsSurvived} zombies={hud.zombiesKilled} onRetry={restart} />
+      )}
     </View>
   );
 }

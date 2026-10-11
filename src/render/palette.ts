@@ -6,6 +6,8 @@ export const PALETTE = {
   grass: '#7BD35A',
   grassDark: '#6BC24C',
   grassLight: '#93E06C',
+  dirt: '#D9B77A',
+  dirtDark: '#C9A266',
   tuft: '#58AE3E',
   flowers: ['#FF6B9A', '#FFE14D', '#FFFFFF', '#8EC5FF'],
   pebble: '#B9C1C6',
@@ -26,7 +28,39 @@ export const PALETTE = {
   hair: '#5A3420',
   white: '#FFFFFF',
   axeHandle: '#8A5A33',
-  axeHead: '#D7DEE6',
+  axeHeads: ['#D7DEE6', '#D7DEE6', '#8EC5FF', '#FFD25A'],
+  zombieSkin: ['#8FCB5A', '#9BD07A', '#7DB85E'],
+  zombieShirt: ['#7A5AA6', '#A65A5A', '#4F7FA6'],
+  zombiePants: '#5B4B3A',
+  zombieEye: '#FFE14D',
+  plank: '#C88A4E',
+  plankDark: '#A86D38',
+  straw: '#F2C94C',
+  strawDark: '#D9A92E',
+  roofRed: '#E0533D',
+  roofRedDark: '#B83E2C',
+  roofBlue: '#4E7BD6',
+  roofBlueDark: '#3A5FB0',
+  stone: '#B9C1C6',
+  stoneDark: '#8E979E',
+  window: '#FFE7A0',
+  door: '#5A3420',
+  flag: '#FF5A5A',
+  chest: '#B8733A',
+  chestBand: '#FFD25A',
+  hpBack: 'rgba(43,34,56,0.85)',
+  hpHero: '#7BD35A',
+  hpEnemy: '#FF5A5A',
+  hpBuilding: '#FFD25A',
+  padFill: 'rgba(255,255,255,0.22)',
+  padFillActive: 'rgba(255,255,255,0.38)',
+  padProgress: 'rgba(255,210,90,0.75)',
+  padStroke: '#FFFFFF',
+  arrow: '#6B4423',
+  night: 'rgba(12,18,52,0.78)',
+  nightClear: 'rgba(12,18,52,0)',
+  glow: 'rgba(255,170,60,0.35)',
+  glowClear: 'rgba(255,170,60,0)',
   joystickBase: 'rgba(255,255,255,0.22)',
   joystickRing: 'rgba(255,255,255,0.55)',
   joystickKnob: 'rgba(255,255,255,0.9)',
@@ -57,6 +91,19 @@ export function stroke(color: string, width: number): SkPaint {
     p.setStrokeWidth(width);
     p.setColor(Skia.Color(color));
     strokes.set(key, p);
+  }
+  return p;
+}
+
+const alphaPaints = new Map<number, SkPaint>();
+/** Pinceau pour saveLayer avec transparence (arrondi au 1/20). */
+export function layerAlpha(alpha: number): SkPaint {
+  const key = Math.round(alpha * 20);
+  let p = alphaPaints.get(key);
+  if (!p) {
+    p = Skia.Paint();
+    p.setAlphaf(key / 20);
+    alphaPaints.set(key, p);
   }
   return p;
 }

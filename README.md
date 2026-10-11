@@ -2,30 +2,36 @@
 
 Jeu mobile iOS de survie en 2D vue du dessus, style cartoon. Expo + React Native + TypeScript, rendu avec React Native Skia.
 
-## État actuel : étape 1
+## État actuel : étape 2 (boucle de jeu complète)
 
-- Héros déplacé au joystick flottant (le pouce se pose n'importe où).
-- Coupe automatique des arbres à proximité : secousses, copeaux, feuilles, « +1 » qui sautent, vibrations, chute de l'arbre, souche qui repousse en 30 s.
-- Une forêt de 85 arbres générée à partir d'une graine (toujours la même carte).
-- Textes en français et en anglais, selon la langue du téléphone.
+Une seule carte, ta base au centre, la forêt autour.
+
+- **Le jour** : coupe du bois (coupe automatique près des arbres) et dépose-le sur les **emplacements** de ta base. Le bois s'envole vers l'emplacement ; quand il est plein, le bâtiment apparaît.
+- **Emplacements** : baraque (4 niveaux), palissade (4 côtés), atelier, hache (3 niveaux), tours de garde (débloquées par la baraque).
+- **La nuit** : une vague de zombies sort des bords de la carte et marche sur la baraque. Ton héros les frappe tout seul, les tours tirent des flèches, la palissade les bloque. Chaque nuit est plus dure.
+- **À l'aube** : la base est réparée ; les palissades détruites sont à reconstruire.
+- **Mort du héros** : tout son bois reste dans un coffre à l'endroit de sa mort ; il revient 3 s plus tard à la base et peut aller le récupérer.
+- **Fin de partie** : si la baraque tombe. Écran de bilan et bouton « Rejouer ».
+- Particules, secousses d'écran, vibrations, chiffres de dégâts, annonces animées, textes FR / EN.
+
+Tester dans un navigateur : ajouter `#riche` (200 bois), `#nuit` (la nuit tombe tout de suite) ou `#nuit-riche` à l'adresse.
+
+`npm run playtest` fait jouer un robot dans la simulation et affiche le déroulé (utile pour l'équilibrage).
 
 ## Feuille de route
 
 | # | Étape | Test |
 |---|---|---|
-| 1 | Héros qui bouge et récolte du bois | Web + Expo Go |
-| 2 | Plusieurs micro-mondes reliés par leurs bords, pierre et nourriture, inventaire | Expo Go |
-| 3 | Zone « chez soi » et premiers bâtiments de la forteresse | Expo Go |
-| 4 | Faim, santé, cycle jour/nuit | Expo Go |
-| 5 | Zombies la nuit, attaque automatique, mort et coffre de ressources laissé sur place | Expo Go |
-| 6 | Fabrication : 10 recettes (outils, armes, armures) | Expo Go |
-| 7 | Village : 6 bâtiments améliorables avec temps de construction | Expo Go |
-| 8 | Niveaux du héros et 3 compétences | Expo Go |
-| 9 | Sauvegarde, missions quotidiennes, récompense de connexion | Expo Go |
-| 10 | Tutoriel de 60 secondes | Expo Go |
-| 11 | Premier build TestFlight | TestFlight |
-| 12 | Pass mensuel, packs, écran d'offre (RevenueCat) | TestFlight |
-| 13 | Finitions et envoi à l'App Store | App Store |
+| 1 | Héros qui bouge et récolte du bois | ✅ |
+| 2 | Base à construire avec le bois, vagues de zombies la nuit, mort et coffre | ✅ |
+| 3 | Pierre et nourriture, faim, nouveaux emplacements (ferme, entrepôt) | Expo Go |
+| 4 | Fabrication : 10 recettes (outils, armes, armures) | Expo Go |
+| 5 | Niveaux du héros et 3 compétences | Expo Go |
+| 6 | Sauvegarde, missions quotidiennes, récompense de connexion | Expo Go |
+| 7 | Tutoriel de 60 secondes | Expo Go |
+| 8 | Premier build TestFlight | TestFlight |
+| 9 | Pass mensuel, packs, écran d'offre (RevenueCat) | TestFlight |
+| 10 | Finitions et envoi à l'App Store | App Store |
 
 ## Architecture
 
@@ -35,8 +41,8 @@ src/
     types.ts       État du jeu (sérialisable : base des sauvegardes et des raids V2)
     constants.ts   Équilibrage
     simulation.ts  createGame() / step(state, input, dt)
-    systems/       Déplacement, récolte, effets
-    world/         Catalogue des micro-mondes et génération
+    systems/       Héros, combat, arbres, construction, zombies, tours, cycle jour/nuit, effets
+    world/         Carte, génération, plan de la base
   render/      Dessin Skia (sprites générés par code, remplaçables par des images)
   input/       Joystick virtuel + clavier (test navigateur)
   ui/          Interface React Native (compteurs, bulles d'aide)
@@ -47,7 +53,8 @@ src/
 
 Principes :
 - **La simulation ne dépend pas du rendu.** Elle pourra tourner sur un serveur pour le multijoueur (coffres laissés à la mort récupérables par les autres joueurs, raids V2).
-- **Micro-mondes** : chaque zone (`ZoneDef`) a une taille, une graine et un type (`wild` pour la récolte, `home` pour la forteresse). Les sorties par les bords arrivent à l'étape 2.
+- **Emplacements** : déduits de l'état de la base (`padSpecs` dans `systems/build.ts`). Ajouter un bâtiment = une entrée de plus dans cette fonction.
+- **Coffres** : laissés à la mort du héros. En V2 (en ligne), d'autres joueurs pourront les piller.
 - **Sauvegarde** (étape 9) : une interface unique, branchée sur le stockage local en V1, puis sur Supabase en V2.
 - **Achats** (étape 12) : une interface unique, branchée sur RevenueCat.
 

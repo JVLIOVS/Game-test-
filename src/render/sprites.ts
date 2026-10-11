@@ -1,7 +1,7 @@
-import { Skia, type SkCanvas, type SkPaint, type SkPath } from '@shopify/react-native-skia';
+import { Skia, type SkCanvas, type SkPath } from '@shopify/react-native-skia';
 import { SWING_DURATION, TREE_FALL_TIME, TREE_GROW_TIME } from '../game/constants';
-import type { Hero, Tree } from '../game/types';
-import { PALETTE as C, fill, stroke } from './palette';
+import type { Chest, Hero, Structure, Tree, Zombie } from '../game/types';
+import { PALETTE as C, fill, layerAlpha, stroke } from './palette';
 
 // Sprites dessinés par code. Chaque fonction dessine à l'origine (pieds/base en 0,0),
 // ce qui permettra plus tard de les remplacer par de vraies images.
@@ -19,27 +19,15 @@ const easeOutBack = (t: number) => {
 const easeInQuad = (t: number) => t * t;
 const lerp = (a: number, b: number, t: number) => a + (b - a) * t;
 
-let pinePath: SkPath | null = null;
-function getPinePath(): SkPath {
-  if (pinePath) return pinePath;
-  const p = Skia.PathBuilder.Make();
-  const tiers = [
-    { y: -28, w: 40, h: 34 },
-    { y: -50, w: 32, h: 30 },
-    { y: -70, w: 22, h: 26 },
-  ];
-  for (const t of tiers) {
-    p.moveTo(-t.w, t.y);
-    p.lineTo(0, t.y - t.h - 10);
-    p.lineTo(t.w, t.y);
-    p.close();
-  }
-  pinePath = p.build();
-  return pinePath;
-}
+/** Choisit la couleur, ou du blanc pendant un flash de dégâts. */
+type Tint = (color: string) => string;
+const normal: Tint = (c) => c;
+const flashWhite: Tint = () => C.white;
+const tintFor = (flash: number): Tint => (flash > 0.5 ? flashWhite : normal);
 
-export function drawShadow(canvas: SkCanvas, x: number, y: number, rx: number, ry: number) {
-  canvas.drawOval(rect(x - rx, y - ry, rx * 2, ry * 2), fill(C.shadow));
+function box(canvas: SkCanvas, x: number, y: number, w: number, h: number, r: number, color: string) {
+  canvas.drawRRect(rrect(x - OUTLINE, y - OUTLINE, w + OUTLINE * 2, h + OUTLINE * 2, r + 2), fill(C.outline));
+  canvas.drawRRect(rrect(x, y, w, h, r), fill(color));
 }
 
 function outlinedCircle(canvas: SkCanvas, x: number, y: number, r: number, color: string) {
@@ -47,10 +35,38 @@ function outlinedCircle(canvas: SkCanvas, x: number, y: number, r: number, color
   canvas.drawCircle(x, y, r, fill(color));
 }
 
+const pathCache = new Map<string, SkPath>();
+function cachedPath(key: string, build: (b: ReturnType<typeof Skia.PathBuilder.Make>) => void): SkPath {
+  let p = pathCache.get(key);
+  if (!p) {
+    const b = Skia.PathBuilder.Make();
+    build(b);
+    p = b.build();
+    pathCache.set(key, p);
+  }
+  return p;
+}
+
+function outlinedPath(canvas: SkCanvas, path: SkPath, color: string) {
+  canvas.drawPath(path, stroke(C.outline, OUTLINE * 2));
+  canvas.drawPath(path, fill(color));
+}
+
+export function drawShadow(canvas: SkCanvas, x: number, y: number, rx: number, ry: number) {
+  canvas.drawOval(rect(x - rx, y - ry, rx * 2, ry * 2), fill(C.shadow));
+}
+
+export function drawHpBar(canvas: SkCanvas, x: number, y: number, w: number, ratio: number, color: string) {
+  const r = Math.max(0, Math.min(1, ratio));
+  canvas.drawRRect(rrect(x - w / 2 - 2, y - 2, w + 4, 9, 4), fill(C.hpBack));
+  if (r > 0) canvas.drawRRect(rrect(x - w / 2, y, w * r, 5, 2.5), fill(color));
+}
+
+// ---------- Arbres ----------
+
 function drawStump(canvas: SkCanvas, tree: Tree) {
   const s = tree.size;
-  canvas.drawRRect(rrect(-11 * s - OUTLINE, -12 * s - OUTLINE, 22 * s + OUTLINE * 2, 14 * s + OUTLINE * 2, 6), fill(C.outline));
-  canvas.drawRRect(rrect(-11 * s, -12 * s, 22 * s, 14 * s, 5), fill(C.trunk));
+  box(canvas, -11 * s, -12 * s, 22 * s, 14 * s, 5, C.trunk);
   canvas.drawOval(rect(-11 * s, -16 * s, 22 * s, 9 * s), fill(C.stumpTop));
   canvas.drawOval(rect(-5 * s, -13.5 * s, 10 * s, 4 * s), stroke(C.trunkLight, 1.5));
 }
@@ -58,9 +74,19 @@ function drawStump(canvas: SkCanvas, tree: Tree) {
 function drawCanopy(canvas: SkCanvas, variant: number) {
   const pal = C.canopies[variant % C.canopies.length];
   if (variant === 1) {
-    const path = getPinePath();
-    canvas.drawPath(path, stroke(C.outline, OUTLINE * 2));
-    canvas.drawPath(path, fill(pal[0]));
+    const path = cachedPath('pine', (p) => {
+      for (const t of [
+        { y: -28, w: 40, h: 34 },
+        { y: -50, w: 32, h: 30 },
+        { y: -70, w: 22, h: 26 },
+      ]) {
+        p.moveTo(-t.w, t.y);
+        p.lineTo(0, t.y - t.h - 10);
+        p.lineTo(t.w, t.y);
+        p.close();
+      }
+    });
+    outlinedPath(canvas, path, pal[0]);
     canvas.save();
     canvas.translate(-5, -4);
     canvas.scale(0.55, 0.9);
@@ -68,7 +94,6 @@ function drawCanopy(canvas: SkCanvas, variant: number) {
     canvas.restore();
     return;
   }
-  // Silhouette contour, puis remplissage, puis reflets.
   canvas.drawCircle(0, -62, 34 + OUTLINE, fill(C.outline));
   canvas.drawCircle(-22, -46, 24 + OUTLINE, fill(C.outline));
   canvas.drawCircle(22, -46, 24 + OUTLINE, fill(C.outline));
@@ -78,23 +103,21 @@ function drawCanopy(canvas: SkCanvas, variant: number) {
   canvas.drawCircle(-6, -68, 22, fill(pal[1]));
   canvas.drawCircle(-14, -76, 9, fill(pal[2]));
   if (variant === 2) {
-    for (const [bx, by] of [[14, -60], [-18, -44], [6, -40]]) {
+    for (const [bx, by] of [
+      [14, -60],
+      [-18, -44],
+      [6, -40],
+    ]) {
       canvas.drawCircle(bx, by, 5, fill(C.outline));
       canvas.drawCircle(bx, by, 3.6, fill('#FF4D5E'));
     }
   }
 }
 
-let fadePaint: SkPaint | null = null;
-
 /** Le feuillage devient transparent quand le héros passe derrière. */
 export function drawTree(canvas: SkCanvas, tree: Tree, time: number, heroBehind = false) {
   if (heroBehind && tree.state === 'standing') {
-    if (!fadePaint) {
-      fadePaint = Skia.Paint();
-      fadePaint.setAlphaf(0.45);
-    }
-    canvas.saveLayer(fadePaint);
+    canvas.saveLayer(layerAlpha(0.45));
     drawTree(canvas, tree, time, false);
     canvas.restore();
     return;
@@ -121,14 +144,24 @@ export function drawTree(canvas: SkCanvas, tree: Tree, time: number, heroBehind 
 
   canvas.rotate(angle, 0, 0);
   canvas.scale(scale, scale);
-  canvas.drawRRect(rrect(-9 - OUTLINE, -42 - OUTLINE, 18 + OUTLINE * 2, 44 + OUTLINE * 2, 6), fill(C.outline));
-  canvas.drawRRect(rrect(-9, -42, 18, 44, 5), fill(C.trunk));
+  box(canvas, -9, -42, 18, 44, 5, C.trunk);
   canvas.drawRRect(rrect(-6, -38, 5, 36, 3), fill(C.trunkLight));
   drawCanopy(canvas, tree.variant);
   canvas.restore();
 }
 
+// ---------- Personnages ----------
+
+function drawAxe(canvas: SkCanvas, level: number, t: Tint) {
+  canvas.drawRRect(rrect(-4.5, -34, 9, 38, 4), fill(C.outline));
+  canvas.drawRRect(rrect(-2.5, -32, 5, 34, 2.5), fill(t(C.axeHandle)));
+  const w = 13 + level * 2;
+  box(canvas, -1, -36, w, 12, 3, t(C.axeHeads[level] ?? C.axeHeads[1]));
+  canvas.drawRRect(rrect(w - 5, -36, 4, 12, 2), fill(C.white));
+}
+
 export function drawHero(canvas: SkCanvas, hero: Hero, time: number) {
+  const t = tintFor(hero.hurtFlash);
   const walking = hero.walkTime > 0;
   const phase = Math.sin(hero.walkTime * 16);
   const bob = walking ? Math.abs(phase) * 4 : Math.sin(time * 3) * 1;
@@ -137,32 +170,24 @@ export function drawHero(canvas: SkCanvas, hero: Hero, time: number) {
   canvas.translate(hero.x, hero.y);
   canvas.scale(hero.dirX, 1);
 
-  // Pieds
   const lf = walking ? phase * 4 : 0;
-  outlinedCircle(canvas, -6, -3 + lf, 5, C.pants);
-  outlinedCircle(canvas, 6, -3 - lf, 5, C.pants);
-
+  outlinedCircle(canvas, -6, -3 + lf, 5, t(C.pants));
+  outlinedCircle(canvas, 6, -3 - lf, 5, t(C.pants));
   canvas.translate(0, -bob);
+  outlinedCircle(canvas, -13, -18, 4.5, t(C.skin));
 
-  // Bras arrière
-  outlinedCircle(canvas, -13, -18, 4.5, C.skin);
+  box(canvas, -13, -32, 26, 26, 10, t(C.shirt));
+  canvas.drawRRect(rrect(-13, -14, 26, 8, 4), fill(t(C.shirtDark)));
 
-  // Corps
-  canvas.drawRRect(rrect(-13 - OUTLINE, -32 - OUTLINE, 26 + OUTLINE * 2, 26 + OUTLINE * 2, 12), fill(C.outline));
-  canvas.drawRRect(rrect(-13, -32, 26, 26, 10), fill(C.shirt));
-  canvas.drawRRect(rrect(-13, -14, 26, 8, 4), fill(C.shirtDark));
-
-  // Tête
-  outlinedCircle(canvas, 0, -44, 15, C.skin);
-  canvas.drawOval(rect(-15, -61, 28, 16), fill(C.hair));
-  canvas.drawOval(rect(-15, -52, 9, 12), fill(C.hair));
+  outlinedCircle(canvas, 0, -44, 15, t(C.skin));
+  canvas.drawOval(rect(-15, -61, 28, 16), fill(t(C.hair)));
+  canvas.drawOval(rect(-15, -52, 9, 12), fill(t(C.hair)));
   canvas.drawCircle(4, -41, 4.6, fill(C.white));
   canvas.drawCircle(12, -41, 4.6, fill(C.white));
   canvas.drawCircle(5.6, -40.5, 2.4, fill(C.outline));
   canvas.drawCircle(13.6, -40.5, 2.4, fill(C.outline));
   canvas.drawCircle(1, -35, 3, fill('rgba(255,110,110,0.45)'));
 
-  // Hache
   let angle = -25 + Math.sin(time * 3) * 3;
   if (hero.swingTime > 0) {
     const p = Math.min(1, hero.swingTime / SWING_DURATION);
@@ -173,14 +198,224 @@ export function drawHero(canvas: SkCanvas, hero: Hero, time: number) {
   canvas.save();
   canvas.translate(10, -20);
   canvas.rotate(angle, 0, 0);
-  canvas.drawRRect(rrect(-2.5 - 2, -32 - 2, 5 + 4, 34 + 4, 3), fill(C.outline));
-  canvas.drawRRect(rrect(-2.5, -32, 5, 34, 2.5), fill(C.axeHandle));
-  canvas.drawRRect(rrect(-1 - OUTLINE, -36 - OUTLINE, 15 + OUTLINE * 2, 12 + OUTLINE * 2, 4), fill(C.outline));
-  canvas.drawRRect(rrect(-1, -36, 15, 12, 3), fill(C.axeHead));
-  canvas.drawRRect(rrect(10, -36, 4, 12, 2), fill(C.white));
-  outlinedCircle(canvas, 0, 0, 4.5, C.skin);
+  drawAxe(canvas, hero.axeLevel, t);
+  outlinedCircle(canvas, 0, 0, 4.5, t(C.skin));
   canvas.restore();
 
+  canvas.restore();
+}
+
+export function drawZombie(canvas: SkCanvas, z: Zombie) {
+  const t = tintFor(z.hitFlash);
+  const skin = C.zombieSkin[z.variant % 3];
+  const shirt = C.zombieShirt[z.variant % 3];
+  const phase = Math.sin(z.walkTime * 9);
+  const dir = z.vx >= 0 ? 1 : -1;
+
+  canvas.save();
+  canvas.translate(z.x, z.y);
+  canvas.scale(dir, 1);
+  outlinedCircle(canvas, -6, -3 + phase * 3, 5, t(C.zombiePants));
+  outlinedCircle(canvas, 6, -3 - phase * 3, 5, t(C.zombiePants));
+  canvas.translate(z.lunge * 7, -Math.abs(phase) * 2);
+  canvas.rotate(phase * 4 + z.lunge * 10, 0, -20);
+
+  box(canvas, -12, -31, 24, 25, 9, t(shirt));
+  canvas.drawRect(rect(-12, -12, 7, 6), fill(t(skin)));
+  canvas.drawRect(rect(3, -10, 6, 4), fill(t(skin)));
+
+  outlinedCircle(canvas, 1, -43, 14, t(skin));
+  canvas.drawCircle(-4, -50, 4, fill(t('rgba(60,90,40,0.35)')));
+  canvas.drawCircle(6, -44, 4.4, fill(C.white));
+  canvas.drawCircle(13, -43, 3.6, fill(C.white));
+  canvas.drawCircle(7, -43.5, 2.2, fill(C.hpEnemy));
+  canvas.drawCircle(13.5, -42.5, 1.8, fill(C.hpEnemy));
+  canvas.drawRRect(rrect(3, -36, 10, 3, 1.5), fill(C.outline));
+
+  // Bras tendus vers l'avant
+  const reach = 6 + z.lunge * 8;
+  canvas.drawRRect(rrect(4, -26, 10 + reach, 7, 3.5), fill(C.outline));
+  canvas.drawRRect(rrect(5, -25, 8 + reach, 5, 2.5), fill(t(skin)));
+  canvas.drawRRect(rrect(2, -19, 12 + reach, 7, 3.5), fill(C.outline));
+  canvas.drawRRect(rrect(3, -18, 10 + reach, 5, 2.5), fill(t(skin)));
+  canvas.restore();
+}
+
+export function drawChest(canvas: SkCanvas, chest: Chest, time: number) {
+  const bob = Math.sin(time * 4) * 2;
+  canvas.save();
+  canvas.translate(chest.x, chest.y - bob);
+  box(canvas, -15, -22, 30, 22, 4, C.chest);
+  box(canvas, -16, -28, 32, 10, 5, C.plank);
+  canvas.drawRect(rect(-3, -28, 6, 28), fill(C.chestBand));
+  canvas.drawCircle(0, -16, 3, fill(C.outline));
+  // Petite étincelle pour attirer l'œil
+  const s = 3 + Math.sin(time * 6) * 1.5;
+  canvas.drawCircle(12, -34, s, fill(C.chestBand));
+  canvas.restore();
+}
+
+// ---------- Bâtiments ----------
+
+const HOUSE_STYLE = [
+  null,
+  { walls: C.plank, wallsDark: C.plankDark, roof: C.straw, roofDark: C.strawDark, stone: false, chimney: false, flag: false, scale: 0.9 },
+  { walls: C.plank, wallsDark: C.plankDark, roof: C.roofRed, roofDark: C.roofRedDark, stone: false, chimney: true, flag: false, scale: 1 },
+  { walls: C.plank, wallsDark: C.plankDark, roof: C.roofRed, roofDark: C.roofRedDark, stone: true, chimney: true, flag: false, scale: 1.08 },
+  { walls: C.stone, wallsDark: C.stoneDark, roof: C.roofBlue, roofDark: C.roofBlueDark, stone: true, chimney: true, flag: true, scale: 1.16 },
+] as const;
+
+export function drawHouse(canvas: SkCanvas, level: number, flash: number, time: number) {
+  const t = tintFor(flash);
+  const st = HOUSE_STYLE[Math.max(1, Math.min(4, level))]!;
+  canvas.save();
+  canvas.scale(st.scale, st.scale);
+
+  if (st.chimney) {
+    box(canvas, 14, -86, 12, 26, 2, t(C.stoneDark));
+  }
+  if (st.flag) {
+    canvas.drawRect(rect(-2, -128, 4, 40), fill(C.outline));
+    const flag = cachedPath('flag', (p) => {
+      p.moveTo(2, -126);
+      p.lineTo(28, -118);
+      p.lineTo(2, -108);
+      p.close();
+    });
+    canvas.save();
+    canvas.translate(2, -117);
+    canvas.scale(1, 1 + Math.sin(time * 5) * 0.15);
+    canvas.translate(-2, 117);
+    outlinedPath(canvas, flag, t(C.flag));
+    canvas.restore();
+  }
+
+  box(canvas, -36, -42, 72, 62, 6, t(st.walls));
+  if (st.stone) {
+    canvas.drawRect(rect(-36, 4, 72, 16), fill(t(C.stone)));
+    for (let i = -30; i < 36; i += 16) canvas.drawRRect(rrect(i, 7, 12, 9, 3), fill(t(C.stoneDark)));
+  } else {
+    for (let y = -30; y < 18; y += 12) canvas.drawRect(rect(-36, y, 72, 2), fill(t(st.wallsDark)));
+  }
+
+  const roof = cachedPath('roof', (p) => {
+    p.moveTo(-48, -36);
+    p.lineTo(0, -92);
+    p.lineTo(48, -36);
+    p.close();
+  });
+  outlinedPath(canvas, roof, t(st.roof));
+  const roofShade = cachedPath('roofShade', (p) => {
+    p.moveTo(0, -92);
+    p.lineTo(48, -36);
+    p.lineTo(18, -36);
+    p.close();
+  });
+  canvas.drawPath(roofShade, fill(t(st.roofDark)));
+
+  box(canvas, -10, -6, 20, 26, 8, t(C.door));
+  canvas.drawCircle(5, 8, 2, fill(C.chestBand));
+  if (level >= 2) {
+    box(canvas, -28, -28, 14, 14, 3, t(C.window));
+    box(canvas, 14, -28, 14, 14, 3, t(C.window));
+  }
+  canvas.restore();
+}
+
+export function drawStakes(canvas: SkCanvas, tx: number, ty: number, flash: number) {
+  const t = tintFor(flash);
+  const offsets = [-22, 0, 22];
+  // Pieux du fond d'abord pour que l'ordre de profondeur reste juste.
+  offsets.sort((a, b) => a * ty - b * ty);
+  const stake = cachedPath('stake', (p) => {
+    p.moveTo(-7, 0);
+    p.lineTo(-7, -38);
+    p.lineTo(0, -50);
+    p.lineTo(7, -38);
+    p.lineTo(7, 0);
+    p.close();
+  });
+  for (const o of offsets) {
+    canvas.save();
+    canvas.translate(tx * o, ty * o);
+    outlinedPath(canvas, stake, t(C.plank));
+    canvas.drawRect(rect(-5, -36, 3, 34), fill(t(C.trunkLight)));
+    canvas.restore();
+  }
+}
+
+export function drawWall(canvas: SkCanvas, s: Structure, baseX: number, baseY: number) {
+  const a = Math.atan2(s.y - baseY, s.x - baseX) + Math.PI / 2;
+  canvas.save();
+  canvas.translate(s.x, s.y);
+  drawStakes(canvas, Math.cos(a), Math.sin(a), s.hitFlash);
+  canvas.restore();
+}
+
+export function drawTower(canvas: SkCanvas, flash: number) {
+  const t = tintFor(flash);
+  box(canvas, -18, -50, 6, 50, 2, t(C.trunk));
+  box(canvas, 12, -50, 6, 50, 2, t(C.trunk));
+  canvas.drawRect(rect(-14, -36, 28, 4), fill(t(C.trunkLight)));
+  canvas.drawRect(rect(-14, -20, 28, 4), fill(t(C.trunkLight)));
+  box(canvas, -24, -62, 48, 14, 3, t(C.plank));
+  // Archer
+  outlinedCircle(canvas, 0, -70, 8, t(C.skin));
+  canvas.drawCircle(3, -71, 2, fill(C.outline));
+  const roof = cachedPath('towerRoof', (p) => {
+    p.moveTo(-28, -80);
+    p.lineTo(0, -104);
+    p.lineTo(28, -80);
+    p.close();
+  });
+  outlinedPath(canvas, roof, t(C.roofRed));
+}
+
+export function drawWorkshop(canvas: SkCanvas, flash: number) {
+  const t = tintFor(flash);
+  box(canvas, -28, -34, 56, 40, 5, t(C.plank));
+  const roof = cachedPath('shopRoof', (p) => {
+    p.moveTo(-36, -30);
+    p.lineTo(-24, -58);
+    p.lineTo(24, -58);
+    p.lineTo(36, -30);
+    p.close();
+  });
+  outlinedPath(canvas, roof, t(C.roofBlue));
+  box(canvas, -20, -22, 18, 28, 4, t(C.door));
+  // Enclume
+  box(canvas, 4, -10, 22, 8, 2, t(C.stoneDark));
+  box(canvas, 10, -2, 10, 8, 1, t(C.stoneDark));
+}
+
+export function drawStructure(canvas: SkCanvas, s: Structure, baseX: number, baseY: number, time: number) {
+  if (s.kind === 'wall') {
+    if (s.pop < 1) {
+      canvas.save();
+      canvas.translate(s.x, s.y);
+      const k = easeOutBack(s.pop);
+      canvas.scale(1, k);
+      canvas.translate(-s.x, -s.y);
+      drawWall(canvas, s, baseX, baseY);
+      canvas.restore();
+    } else drawWall(canvas, s, baseX, baseY);
+    return;
+  }
+  canvas.save();
+  canvas.translate(s.x, s.y);
+  const k = s.pop < 1 ? Math.max(0.01, easeOutBack(s.pop)) : 1;
+  canvas.scale(k, k);
+  if (s.kind === 'house') drawHouse(canvas, s.level, s.hitFlash, time);
+  else if (s.kind === 'tower') drawTower(canvas, s.hitFlash);
+  else drawWorkshop(canvas, s.hitFlash);
+  canvas.restore();
+}
+
+export function drawAxeIcon(canvas: SkCanvas, level: number) {
+  canvas.save();
+  canvas.rotate(30, 0, 0);
+  canvas.translate(0, 14);
+  drawAxe(canvas, level, normal);
   canvas.restore();
 }
 
