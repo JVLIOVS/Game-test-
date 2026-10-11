@@ -1,6 +1,6 @@
 import { Pressable, StyleSheet, Text, View } from 'react-native';
 import Animated, { FadeIn, ZoomIn } from 'react-native-reanimated';
-import { CARD_ICONS, PERKS } from '../game/data/perks';
+import { CARD_ICONS, PERK_SLOTS } from '../game/data/perks';
 import type { CardId } from '../game/types';
 import { t, type TranslationKey } from '../i18n';
 import { FONT } from './fonts';
@@ -9,21 +9,29 @@ interface Props {
   level: number;
   cards: CardId[];
   levels: number[];
+  ownedCount: number;
   onPick: (card: CardId) => void;
 }
 
-const TONES = {
-  weapon: { bg: '#FF7A5A', dark: '#C8452A' },
-  bonus: { bg: '#5B8DEF', dark: '#3A63B8' },
-  instant: { bg: '#7BD35A', dark: '#4E9A35' },
-} as const;
+const TONES: Record<CardId, { bg: string; dark: string }> = {
+  bow: { bg: '#FF7A5A', dark: '#C8452A' },
+  orbit: { bg: '#F2A93B', dark: '#B87A1E' },
+  bomb: { bg: '#B05BD6', dark: '#7E3AA3' },
+  lightning: { bg: '#5B8DEF', dark: '#3A63B8' },
+  engineer: { bg: '#4FB8B0', dark: '#2E8A84' },
+  heal: { bg: '#7BD35A', dark: '#4E9A35' },
+  woodBag: { bg: '#C88A4E', dark: '#94622F' },
+};
 
 function Card({ card, current, index, onPick }: { card: CardId; current: number; index: number; onPick: () => void }) {
   const instant = card === 'heal' || card === 'woodBag';
-  const kind = instant ? 'instant' : PERKS[card].kind;
-  const tone = TONES[kind];
+  const tone = TONES[card];
   const next = instant ? 1 : current + 1;
-  const tag = instant ? t('card.instant') : kind === 'weapon' ? t('card.weapon') : t('card.bonus');
+  const tag = instant
+    ? t('card.instant')
+    : current === 0
+      ? t('card.new')
+      : t('card.phase', { n: next });
 
   return (
     <Animated.View entering={ZoomIn.delay(120 + index * 90).springify().damping(13)}>
@@ -38,9 +46,9 @@ function Card({ card, current, index, onPick }: { card: CardId; current: number;
         <View style={styles.body}>
           <View style={styles.titleRow}>
             <Text style={styles.name} numberOfLines={1}>
-              {t(`perk.${card}.name` as TranslationKey)}
+              {t(`perk.${card}.name${next}` as TranslationKey)}
             </Text>
-            <Text style={styles.tag}>{current === 0 && !instant ? t('card.new') : tag}</Text>
+            <Text style={styles.tag}>{tag}</Text>
           </View>
           <Text style={styles.desc}>{t(`perk.${card}.${next}` as TranslationKey)}</Text>
           {!instant && (
@@ -56,13 +64,15 @@ function Card({ card, current, index, onPick }: { card: CardId; current: number;
   );
 }
 
-export function LevelUp({ level, cards, levels, onPick }: Props) {
+export function LevelUp({ level, cards, levels, ownedCount, onPick }: Props) {
   return (
     <Animated.View entering={FadeIn.duration(200)} style={styles.backdrop}>
       <Animated.Text entering={ZoomIn.springify().damping(10)} style={styles.title}>
         {t('levelup.title', { n: level })}
       </Animated.Text>
-      <Text style={styles.sub}>{t('levelup.sub')}</Text>
+      <Text style={styles.sub}>
+        {ownedCount >= PERK_SLOTS ? t('card.slotsFull') : `${t('levelup.sub')} · ${t('card.slots', { n: ownedCount })}`}
+      </Text>
       <View style={styles.list}>
         {cards.map((card, i) => (
           <Card key={`${card}-${i}`} card={card} current={levels[i] ?? 0} index={i} onPick={() => onPick(card)} />
@@ -92,7 +102,7 @@ const styles = StyleSheet.create({
     textShadowRadius: 6,
     textShadowOffset: { width: 0, height: 3 },
   },
-  sub: { fontSize: 18, color: '#FFFFFF', fontFamily: FONT.semi, marginBottom: 18 },
+  sub: { fontSize: 17, color: '#FFFFFF', fontFamily: FONT.semi, marginBottom: 18, textAlign: 'center' },
   list: { width: '100%', maxWidth: 420, gap: 14 },
   card: {
     flexDirection: 'row',

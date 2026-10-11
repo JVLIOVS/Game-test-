@@ -1,4 +1,5 @@
 import { PaintStyle, Skia, type SkPaint } from '@shopify/react-native-skia';
+import { WORLDS, type WorldDef } from '../game/data/worlds';
 
 // Palette cartoon : couleurs saturées, contours sombres.
 export const PALETTE = {
@@ -38,6 +39,10 @@ export const PALETTE = {
   gemBig: '#C77DFF',
   bolt: '#FFF6B0',
   boltGlow: 'rgba(160,220,255,0.6)',
+  boltStorm: '#E6D2FF',
+  boltGlowStorm: 'rgba(170,120,255,0.65)',
+  fireGlow: 'rgba(255,140,40,0.45)',
+  iceGlow: 'rgba(91,224,255,0.5)',
   zombieEye: '#FFE14D',
   plank: '#C88A4E',
   plankDark: '#A86D38',
@@ -113,3 +118,11 @@ export function layerAlpha(alpha: number): SkPaint {
   }
   return p;
 }
+
+
+let theme: WorldDef = WORLDS[0];
+/** Le monde courant donne ses couleurs au décor (sol, arbres, bâtiments, zombies). */
+export const setTheme = (t: WorldDef) => {
+  theme = t;
+};
+export const THEME = () => theme;

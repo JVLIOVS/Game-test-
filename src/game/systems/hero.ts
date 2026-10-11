@@ -6,7 +6,7 @@ import {
   HERO_RESPAWN_TIME,
   HERO_SPEED,
 } from '../constants';
-import { PERK_VALUES } from '../data/perks';
+import { equipStats } from '../data/equipment';
 import { FX_COLORS } from '../fxColors';
 import type { GameState, PlayerInput } from '../types';
 import { LAYOUT } from '../world/layout';
@@ -20,7 +20,7 @@ export function updateHeroMovement(state: GameState, input: PlayerInput, dt: num
     return;
   }
   const k = 1 - Math.exp(-HERO_ACCEL * dt);
-  const speed = HERO_SPEED * (1 + PERK_VALUES.swift.speedBonus[state.perks.swift]);
+  const speed = HERO_SPEED * equipStats(state).speed;
   hero.vx += (input.moveX * speed - hero.vx) * k;
   hero.vy += (input.moveY * speed - hero.vy) * k;
   hero.x += hero.vx * dt;
@@ -48,6 +48,8 @@ export function updateHeroMovement(state: GameState, input: PlayerInput, dt: num
 export function damageHero(state: GameState, amount: number) {
   const hero = state.hero;
   if (hero.dead) return;
+  // Le bouclier bloque une partie des coups.
+  amount = Math.max(1, Math.round(amount * (1 - equipStats(state).block)));
   hero.hp -= amount;
   hero.hurtFlash = 1;
   hero.sinceHurt = 0;
@@ -79,7 +81,7 @@ export function updateHeroLife(state: GameState, dt: number) {
     hero.respawnTimer -= dt;
     if (hero.respawnTimer <= 0) {
       hero.dead = false;
-      hero.hp = hero.maxHp = HERO_MAX_HP + PERK_VALUES.vigor.hpBonus[state.perks.vigor];
+      hero.hp = hero.maxHp = HERO_MAX_HP + equipStats(state).hpBonus;
       hero.x = state.base.x + LAYOUT.heroSpawn.x;
       hero.y = state.base.y + LAYOUT.heroSpawn.y;
       spawnBurst(state, hero.x, hero.y, 0, 10, 'dust', FX_COLORS.dust, 1);

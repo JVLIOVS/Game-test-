@@ -1,7 +1,8 @@
 import { Skia, type SkCanvas, type SkPath } from '@shopify/react-native-skia';
-import { SWING_DURATION, TREE_FALL_TIME, TREE_GROW_TIME } from '../game/constants';
-import type { Chest, Hero, Structure, Tree, Zombie } from '../game/types';
-import { PALETTE as C, fill, layerAlpha, stroke } from './palette';
+import { SWING_DURATION, TREE_FALL_TIME, TREE_GROW_TIME, bossStats } from '../game/constants';
+import { EQUIP_TIER_COLORS } from '../game/data/equipment';
+import type { Chest, EquipSlot, Hero, Structure, Tree, Zombie } from '../game/types';
+import { PALETTE as C, THEME, fill, layerAlpha, stroke } from './palette';
 
 // Sprites dessinés par code. Chaque fonction dessine à l'origine (pieds/base en 0,0),
 // ce qui permettra plus tard de les remplacer par de vraies images.
@@ -72,7 +73,8 @@ function drawStump(canvas: SkCanvas, tree: Tree) {
 }
 
 function drawCanopy(canvas: SkCanvas, variant: number) {
-  const pal = C.canopies[variant % C.canopies.length];
+  const canopies = THEME().canopy;
+  const pal = canopies[variant % canopies.length];
   if (variant === 1) {
     const path = cachedPath('pine', (p) => {
       for (const t of [
@@ -160,7 +162,16 @@ function drawAxe(canvas: SkCanvas, level: number, t: Tint) {
   canvas.drawRRect(rrect(w - 5, -36, 4, 12, 2), fill(C.white));
 }
 
-export function drawHero(canvas: SkCanvas, hero: Hero, time: number) {
+function drawSword(canvas: SkCanvas, tier: number, t: Tint) {
+  const blade = EQUIP_TIER_COLORS[tier] ?? C.axeHeads[1];
+  box(canvas, -3, -46, 6, 38, 2, t(tier >= 2 ? blade : '#D7DEE6'));
+  canvas.drawRect(rect(-1, -44, 2, 32), fill(C.white));
+  box(canvas, -9, -10, 18, 5, 2, t(tier === 1 ? C.trunk : blade));
+  box(canvas, -2.5, -6, 5, 10, 2, t(C.axeHandle));
+  if (tier >= 4) canvas.drawCircle(0, -30, 10, fill('rgba(91,224,255,0.25)'));
+}
+
+export function drawHero(canvas: SkCanvas, hero: Hero, time: number, gear: Record<EquipSlot, number>) {
   const t = tintFor(hero.hurtFlash);
   const walking = hero.walkTime > 0;
   const phase = Math.sin(hero.walkTime * 16);
@@ -176,12 +187,22 @@ export function drawHero(canvas: SkCanvas, hero: Hero, time: number) {
   canvas.translate(0, -bob);
   outlinedCircle(canvas, -13, -18, 4.5, t(C.skin));
 
-  box(canvas, -13, -32, 26, 26, 10, t(C.shirt));
-  canvas.drawRRect(rrect(-13, -14, 26, 8, 4), fill(t(C.shirtDark)));
+  // Armure : le torse prend la couleur du palier.
+  const armor = gear.armor ? EQUIP_TIER_COLORS[gear.armor] : null;
+  box(canvas, -13, -32, 26, 26, 10, t(armor ?? C.shirt));
+  canvas.drawRRect(rrect(-13, -14, 26, 8, 4), fill(t(armor ? C.outline : C.shirtDark)));
+  if (armor) canvas.drawRRect(rrect(-6, -29, 12, 10, 4), fill(t('rgba(255,255,255,0.35)')));
 
   outlinedCircle(canvas, 0, -44, 15, t(C.skin));
-  canvas.drawOval(rect(-15, -61, 28, 16), fill(t(C.hair)));
-  canvas.drawOval(rect(-15, -52, 9, 12), fill(t(C.hair)));
+  if (armor) {
+    // Casque assorti à l'armure
+    canvas.drawRRect(rrect(-17, -63, 32, 16, 8), fill(C.outline));
+    canvas.drawRRect(rrect(-15, -61, 28, 13, 6), fill(t(armor)));
+    canvas.drawRect(rect(-15, -52, 9, 8), fill(t(armor)));
+  } else {
+    canvas.drawOval(rect(-15, -61, 28, 16), fill(t(C.hair)));
+    canvas.drawOval(rect(-15, -52, 9, 12), fill(t(C.hair)));
+  }
   canvas.drawCircle(4, -41, 4.6, fill(C.white));
   canvas.drawCircle(12, -41, 4.6, fill(C.white));
   canvas.drawCircle(5.6, -40.5, 2.4, fill(C.outline));
@@ -198,9 +219,19 @@ export function drawHero(canvas: SkCanvas, hero: Hero, time: number) {
   canvas.save();
   canvas.translate(10, -20);
   canvas.rotate(angle, 0, 0);
-  drawAxe(canvas, hero.axeLevel, t);
+  // L'épée sert au combat, la hache aux arbres.
+  if (gear.sword && hero.target?.kind !== 'tree') drawSword(canvas, gear.sword, t);
+  else drawAxe(canvas, hero.axeLevel, t);
   outlinedCircle(canvas, 0, 0, 4.5, t(C.skin));
   canvas.restore();
+
+  // Bouclier sur le bras arrière
+  if (gear.shield) {
+    const col = EQUIP_TIER_COLORS[gear.shield];
+    outlinedCircle(canvas, -16, -20, 10, t(col));
+    canvas.drawCircle(-16, -20, 5, fill(t(gear.shield >= 3 ? C.white : C.outline)));
+    canvas.drawCircle(-16, -20, 3, fill(t(col)));
+  }
 
   canvas.restore();
 }
@@ -214,7 +245,10 @@ export function drawZombie(canvas: SkCanvas, z: Zombie) {
 
   canvas.save();
   canvas.translate(z.x, z.y);
-  if (z.boss) canvas.scale(2.1, 2.1);
+  if (z.boss) {
+    const s = bossStats(1, z.bossSize === 'big' ? 'big' : 'mini').scale;
+    canvas.scale(s, s);
+  }
   canvas.scale(dir, 1);
   outlinedCircle(canvas, -6, -3 + phase * 3, 5, t(C.zombiePants));
   outlinedCircle(canvas, 6, -3 - phase * 3, 5, t(C.zombiePants));
@@ -232,6 +266,7 @@ export function drawZombie(canvas: SkCanvas, z: Zombie) {
   canvas.drawCircle(7, -43.5, 2.2, fill(C.hpEnemy));
   canvas.drawCircle(13.5, -42.5, 1.8, fill(C.hpEnemy));
   canvas.drawRRect(rrect(3, -36, 10, 3, 1.5), fill(C.outline));
+  drawZombieGear(canvas, t);
 
   // Bras tendus vers l'avant
   const reach = 6 + z.lunge * 8;
@@ -239,7 +274,12 @@ export function drawZombie(canvas: SkCanvas, z: Zombie) {
   canvas.drawRRect(rrect(5, -25, 8 + reach, 5, 2.5), fill(t(skin)));
   canvas.drawRRect(rrect(2, -19, 12 + reach, 7, 3.5), fill(C.outline));
   canvas.drawRRect(rrect(3, -18, 10 + reach, 5, 2.5), fill(t(skin)));
-  if (z.boss) {
+  if (z.bossSize === 'mini') {
+    // Bandeau rouge du mini-boss
+    canvas.drawRRect(rrect(-13, -53, 28, 6, 3), fill(C.outline));
+    canvas.drawRRect(rrect(-12, -52, 26, 4, 2), fill(t(C.hpEnemy)));
+  }
+  if (z.bossSize === 'big') {
     const crown = cachedPath('crown', (p) => {
       p.moveTo(-10, -55);
       p.lineTo(-10, -66);
@@ -253,6 +293,22 @@ export function drawZombie(canvas: SkCanvas, z: Zombie) {
     outlinedPath(canvas, crown, t(C.chestBand));
   }
   canvas.restore();
+}
+
+function drawZombieGear(canvas: SkCanvas, t: Tint) {
+  const gear = THEME().zombieGear;
+  if (gear === 'helmet') {
+    canvas.drawRRect(rrect(-14, -60, 30, 14, 7), fill(C.outline));
+    canvas.drawRRect(rrect(-12, -58, 26, 11, 5), fill(t(C.stone)));
+    canvas.drawRect(rect(-1, -58, 4, 11), fill(t(C.stoneDark)));
+  } else if (gear === 'goggles') {
+    canvas.drawRect(rect(-13, -47, 28, 4), fill(t(C.door)));
+    outlinedCircle(canvas, 7, -45, 4.5, t('#FFB020'));
+    outlinedCircle(canvas, 14, -44, 3.5, t('#FFB020'));
+  } else if (gear === 'visor') {
+    canvas.drawRRect(rrect(0, -49, 18, 8, 4), fill(C.outline));
+    canvas.drawRRect(rrect(1, -48, 16, 6, 3), fill(t('#5BE0FF')));
+  }
 }
 
 export function drawGem(canvas: SkCanvas, x: number, y: number, value: number, time: number) {
@@ -274,19 +330,24 @@ export function drawGem(canvas: SkCanvas, x: number, y: number, value: number, t
 }
 
 /** Hache qui tourne autour du héros. */
-export function drawSpinningAxe(canvas: SkCanvas, x: number, y: number, angle: number) {
+export function drawSpinningAxe(canvas: SkCanvas, x: number, y: number, angle: number, phase: number) {
   canvas.save();
   canvas.translate(x, y);
-  canvas.rotate((angle * 180) / Math.PI * 3, 0, 0);
+  const s = phase === 3 ? 1.5 : phase === 2 ? 1.25 : 1;
+  if (phase >= 2) canvas.drawCircle(0, 0, 22 * s, fill(phase === 3 ? 'rgba(255,210,90,0.35)' : 'rgba(255,255,255,0.25)'));
+  canvas.scale(s, s);
+  canvas.rotate(((angle * 180) / Math.PI) * 3, 0, 0);
   canvas.translate(0, 14);
-  drawAxe(canvas, 2, normal);
+  drawAxe(canvas, phase === 3 ? 3 : 2, normal);
   canvas.restore();
 }
 
-export function drawBomb(canvas: SkCanvas, x: number, y: number, time: number) {
+export function drawBomb(canvas: SkCanvas, x: number, y: number, time: number, phase: number) {
   canvas.save();
   canvas.translate(x, y);
-  outlinedCircle(canvas, 0, 0, 9, C.outline);
+  const s = phase === 2 ? 1.3 : 1;
+  canvas.scale(s, s);
+  outlinedCircle(canvas, 0, 0, 9, phase === 3 ? '#7A3FC2' : phase === 2 ? '#C2352B' : C.outline);
   canvas.drawCircle(-3, -3, 2.5, fill('rgba(255,255,255,0.5)'));
   canvas.drawRect(rect(-2, -14, 4, 5), fill(C.outline));
   canvas.drawCircle(0, -16, 3 + Math.sin(time * 30) * 1, fill('#FFB020'));
@@ -319,7 +380,10 @@ const HOUSE_STYLE = [
 
 export function drawHouse(canvas: SkCanvas, level: number, flash: number, time: number) {
   const t = tintFor(flash);
-  const st = HOUSE_STYLE[Math.max(1, Math.min(4, level))]!;
+  const th = THEME();
+  const base = HOUSE_STYLE[Math.max(1, Math.min(4, level))]!;
+  // Les murs et le toit prennent les couleurs du monde.
+  const st = { ...base, walls: th.walls[0], wallsDark: th.walls[1], roof: th.roof[0], roofDark: th.roof[1] };
   canvas.save();
   canvas.scale(st.scale, st.scale);
 
@@ -356,7 +420,17 @@ export function drawHouse(canvas: SkCanvas, level: number, flash: number, time: 
     p.lineTo(48, -36);
     p.close();
   });
+  if (th.id === 'future') {
+    // Dôme
+    canvas.drawCircle(0, -40, 44 + OUTLINE, fill(C.outline));
+    canvas.drawCircle(0, -40, 44, fill(t(st.roof)));
+    canvas.drawCircle(-14, -58, 10, fill(t('rgba(255,255,255,0.5)')));
+    canvas.drawRect(rect(-48, -40, 96, 6), fill(C.outline));
+  } else {
   outlinedPath(canvas, roof, t(st.roof));
+  if (th.id === 'kingdom') {
+    for (const cx of [-36, -12, 12, 36]) box(canvas, cx - 6, -50, 12, 12, 2, t(st.walls));
+  }
   const roofShade = cachedPath('roofShade', (p) => {
     p.moveTo(0, -92);
     p.lineTo(48, -36);
@@ -364,6 +438,7 @@ export function drawHouse(canvas: SkCanvas, level: number, flash: number, time: 
     p.close();
   });
   canvas.drawPath(roofShade, fill(t(st.roofDark)));
+  }
 
   box(canvas, -10, -6, 20, 26, 8, t(C.door));
   canvas.drawCircle(5, 8, 2, fill(C.chestBand));
@@ -390,8 +465,9 @@ export function drawStakes(canvas: SkCanvas, tx: number, ty: number, flash: numb
   for (const o of offsets) {
     canvas.save();
     canvas.translate(tx * o, ty * o);
-    outlinedPath(canvas, stake, t(C.plank));
-    canvas.drawRect(rect(-5, -36, 3, 34), fill(t(C.trunkLight)));
+    const [stakeColor, stakeLight] = THEME().stake;
+    outlinedPath(canvas, stake, t(stakeColor));
+    canvas.drawRect(rect(-5, -36, 3, 34), fill(t(stakeLight)));
     canvas.restore();
   }
 }
@@ -404,16 +480,27 @@ export function drawWall(canvas: SkCanvas, s: Structure, baseX: number, baseY: n
   canvas.restore();
 }
 
-export function drawTower(canvas: SkCanvas, flash: number) {
+export function drawTower(canvas: SkCanvas, flash: number, phase = 0) {
   const t = tintFor(flash);
-  box(canvas, -18, -50, 6, 50, 2, t(C.trunk));
-  box(canvas, 12, -50, 6, 50, 2, t(C.trunk));
-  canvas.drawRect(rect(-14, -36, 28, 4), fill(t(C.trunkLight)));
-  canvas.drawRect(rect(-14, -20, 28, 4), fill(t(C.trunkLight)));
-  box(canvas, -24, -62, 48, 14, 3, t(C.plank));
-  // Archer
-  outlinedCircle(canvas, 0, -70, 8, t(C.skin));
-  canvas.drawCircle(3, -71, 2, fill(C.outline));
+  const [wall, wallDark] = THEME().walls;
+  box(canvas, -18, -50, 6, 50, 2, t(wallDark));
+  box(canvas, 12, -50, 6, 50, 2, t(wallDark));
+  canvas.drawRect(rect(-14, -36, 28, 4), fill(t(wall)));
+  canvas.drawRect(rect(-14, -20, 28, 4), fill(t(wall)));
+  box(canvas, -24, -62, 48, 14, 3, t(wall));
+  if (phase >= 3) {
+    // Canon
+    box(canvas, -6, -78, 26, 12, 6, t(C.outline));
+    canvas.drawCircle(18, -72, 4, fill(C.hpEnemy));
+  } else {
+    // Archer(s)
+    outlinedCircle(canvas, phase >= 2 ? -8 : 0, -70, 8, t(C.skin));
+    canvas.drawCircle(phase >= 2 ? -5 : 3, -71, 2, fill(C.outline));
+    if (phase >= 2) {
+      outlinedCircle(canvas, 9, -70, 8, t(C.skin));
+      canvas.drawCircle(12, -71, 2, fill(C.outline));
+    }
+  }
   const roof = cachedPath('towerRoof', (p) => {
     p.moveTo(-28, -80);
     p.lineTo(0, -104);
@@ -440,7 +527,7 @@ export function drawWorkshop(canvas: SkCanvas, flash: number) {
   box(canvas, 10, -2, 10, 8, 1, t(C.stoneDark));
 }
 
-export function drawStructure(canvas: SkCanvas, s: Structure, baseX: number, baseY: number, time: number) {
+export function drawStructure(canvas: SkCanvas, s: Structure, baseX: number, baseY: number, time: number, towerPhase = 0) {
   if (s.kind === 'wall') {
     if (s.pop < 1) {
       canvas.save();
@@ -458,7 +545,7 @@ export function drawStructure(canvas: SkCanvas, s: Structure, baseX: number, bas
   const k = s.pop < 1 ? Math.max(0.01, easeOutBack(s.pop)) : 1;
   canvas.scale(k, k);
   if (s.kind === 'house') drawHouse(canvas, s.level, s.hitFlash, time);
-  else if (s.kind === 'tower') drawTower(canvas, s.hitFlash);
+  else if (s.kind === 'tower') drawTower(canvas, s.hitFlash, towerPhase);
   else drawWorkshop(canvas, s.hitFlash);
   canvas.restore();
 }

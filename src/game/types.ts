@@ -127,6 +127,8 @@ export interface Zombie {
   variant: number;
   /** Boss de fin de manche : plus gros, plus lent, plus fort. */
   boss: boolean;
+  /** Taille du boss : mini (manches 1 et 2) ou gros (manche 3). */
+  bossSize: 'none' | 'mini' | 'big';
   /** Temps avant que les haches tournoyantes puissent le refrapper. */
   orbitCooldown: number;
 }
@@ -139,6 +141,10 @@ export interface Projectile {
   life: number;
   damage: number;
   targetId: number;
+  /** Apparence : flèche de tour, ou phase de l'arc (1 bois, 2 feu, 3 glace). */
+  style: 'tower' | 'bow1' | 'bow2' | 'bow3' | 'cannon';
+  /** Rayon d'explosion à l'impact (0 = aucune). */
+  splash: number;
 }
 
 /** Bombe lancée en cloche, qui explose à l'arrivée. */
@@ -151,6 +157,10 @@ export interface Bomb {
   duration: number;
   radius: number;
   damage: number;
+  /** Phase de l'atout (change l'apparence). */
+  phase: number;
+  /** Petites bombes secondaires à l'explosion (phase 3). */
+  cluster: number;
 }
 
 /** Éclair (effet visuel ; les dégâts sont appliqués tout de suite). */
@@ -159,6 +169,7 @@ export interface Bolt {
   y: number;
   life: number;
   seed: number;
+  phase: number;
 }
 
 /** Gemme d'expérience laissée par un zombie. */
@@ -172,17 +183,9 @@ export interface Gem {
   age: number;
 }
 
-export type PerkId =
-  | 'bow'
-  | 'orbit'
-  | 'bomb'
-  | 'lightning'
-  | 'vigor'
-  | 'swift'
-  | 'strength'
-  | 'magnet'
-  | 'lumberjack'
-  | 'architect';
+export type PerkId = 'bow' | 'orbit' | 'bomb' | 'lightning' | 'engineer';
+
+export type EquipSlot = 'sword' | 'shield' | 'armor';
 
 /** Carte proposée au passage de niveau. */
 export type CardId = PerkId | 'heal' | 'woodBag';
@@ -272,7 +275,9 @@ export type GameEvent =
   | { type: 'bossKilled'; round: number }
   | { type: 'roundCleared'; round: number }
   | { type: 'bombExploded' }
-  | { type: 'lightning' };
+  | { type: 'lightning' }
+  | { type: 'equipGained'; slot: EquipSlot; tier: number }
+  | { type: 'worldAdvance'; world: number };
 
 export interface GameState {
   time: number;
@@ -301,6 +306,12 @@ export interface GameState {
   pendingLevelUps: number;
   bossesKilled: number;
   bossAlive: boolean;
+  /** Monde actuel (0 = ferme). */
+  world: number;
+  /** Manche dans le monde (1..3), 0 avant la première nuit du monde. */
+  roundInWorld: number;
+  /** Palier de chaque équipement (0 = pas encore gagné). */
+  equipment: Record<EquipSlot, number>;
   hero: Hero;
   inventory: Inventory;
   cycle: Cycle;

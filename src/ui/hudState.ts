@@ -1,4 +1,6 @@
 import { xpToNext } from '../game/constants';
+import { ownedPerks } from '../game/data/perks';
+import { worldDef } from '../game/data/worlds';
 import type { GameState } from '../game/types';
 import { getHouse } from '../game/systems/build';
 
@@ -25,6 +27,14 @@ export interface HudState {
   choice: string;
   /** Niveau actuel de chaque carte proposée, dans le même ordre. */
   choiceLevels: string;
+  worldId: string;
+  /** Manche en cours (la nuit) ou à venir (le jour), de 1 à 3. */
+  round: number;
+  /** Atouts possédés : "bow:2,orbit:1". */
+  slots: string;
+  sword: number;
+  shield: number;
+  armor: number;
 }
 
 export function readHud(state: GameState): HudState {
@@ -52,6 +62,14 @@ export function readHud(state: GameState): HudState {
     choiceLevels: state.choice
       ? state.choice.map((c) => (c === 'heal' || c === 'woodBag' ? 0 : state.perks[c])).join(',')
       : '',
+    worldId: worldDef(state.world).id,
+    round: c.phase === 'night' ? state.roundInWorld : state.roundInWorld + 1,
+    slots: ownedPerks(state)
+      .map((id) => `${id}:${state.perks[id]}`)
+      .join(','),
+    sword: state.equipment.sword,
+    shield: state.equipment.shield,
+    armor: state.equipment.armor,
   };
 }
 

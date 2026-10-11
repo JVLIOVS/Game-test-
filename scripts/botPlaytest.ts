@@ -47,6 +47,7 @@ for (let i = 0; i < (MINUTES * 60) / DT && state.status === 'playing'; i++) {
     counts[ev.type] = (counts[ev.type] ?? 0) + 1;
     const time = state.time.toFixed(0).padStart(4);
     if (ev.type === 'built') log.push(`${time}s construit ${JSON.stringify(ev.action)}`);
+    if (ev.type === 'equipGained' || ev.type === 'worldAdvance') log.push(`${state.time.toFixed(0).padStart(4)}s ${JSON.stringify(ev)}`);
     if (ev.type === 'bossSpawn' || ev.type === 'bossKilled' || ev.type === 'nightStart' || ev.type === 'dayStart' || ev.type === 'heroDied' || ev.type === 'gameOver' || ev.type === 'structureDestroyed') {
       const house = state.structures.find((s) => s.kind === 'house');
       log.push(`${time}s ${ev.type} ${JSON.stringify(ev)} baraque=${house?.hp.toFixed(0)}/${house?.maxHp} bois=${state.inventory.wood}`);
@@ -57,4 +58,4 @@ for (let i = 0; i < (MINUTES * 60) / DT && state.status === 'playing'; i++) {
 console.log(log.join('\n'));
 console.log('\nÉvénements :', counts);
 console.log('Atouts :', JSON.stringify(state.perks));
-console.log('Fin :', state.status, '| niveau', state.hero.level, '| boss', state.bossesKilled, '| temps', state.time.toFixed(0), 's | nuits', state.cycle.night, '| zombies tués', state.stats.zombiesKilled, '| bâtiments', state.structures.length);
+console.log('Fin :', state.status, '| monde', state.world, '| équipement', JSON.stringify(state.equipment), '| niveau', state.hero.level, '| boss', state.bossesKilled, '| temps', state.time.toFixed(0), 's | nuits', state.cycle.night, '| zombies tués', state.stats.zombiesKilled, '| bâtiments', state.structures.length);

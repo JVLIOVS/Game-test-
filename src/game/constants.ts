@@ -28,9 +28,9 @@ export const TREE_REGROW_TIME = 25;
 export const TREE_GROW_TIME = 0.6;
 
 // Base
-export const BASE_CLEARING = 320; // pas d'arbre autour de la base
-export const WALL_RING_RADIUS = 200;
-export const WALL_SEGMENTS_PER_SIDE = 4;
+export const BASE_CLEARING = 370; // pas d'arbre autour de la base
+export const WALL_RING_RADIUS = 240;
+export const WALL_SEGMENTS_PER_SIDE = 5;
 export const WALL_SEGMENT_RADIUS = 34;
 export const WALL_HP = 70;
 export const HOUSE_RADIUS = 44;
@@ -63,11 +63,12 @@ export const DAY_LENGTH = 40;
 export const NIGHT_SPAWN_SPREAD = 12; // les zombies arrivent sur 12 s
 
 // Zombies (la nuit n renforce chaque valeur)
-export const zombieWave = (night: number) => ({
-  count: 4 + night * 3,
-  hp: 26 + night * 9,
-  speed: Math.min(95, 52 + night * 4),
-  damage: 7 + night,
+/** Vague de la nuit n (comptée depuis le début) dans le monde w (0 = ferme) : chaque monde est une invasion plus massive. */
+export const zombieWave = (night: number, world: number) => ({
+  count: 4 + night * 3 + world * 5,
+  hp: Math.round((26 + night * 9) * (1 + world * 0.3)),
+  speed: Math.min(95, 52 + night * 3),
+  damage: 7 + night + world * 2,
 });
 export const ZOMBIE_RADIUS = 13;
 export const ZOMBIE_AGGRO_RANGE = 150;
@@ -83,12 +84,16 @@ export const GEM_PICKUP_RADIUS = 18;
 export const GEM_PULL_SPEED = 520;
 
 // Boss de fin de manche
-export const bossStats = (round: number) => ({
-  hp: 260 + (round - 1) * 220,
-  speed: 42 + Math.min(20, round * 2),
-  damage: 22 + round * 4,
-});
-export const BOSS_RADIUS = 28;
+export const bossStats = (round: number, size: 'mini' | 'big') => {
+  const k = size === 'big' ? 2.2 : 1;
+  return {
+    hp: Math.round((140 + (round - 1) * 170) * k),
+    speed: (size === 'big' ? 38 : 44) + Math.min(20, round * 2),
+    damage: Math.round((12 + round * 4) * (size === 'big' ? 1.4 : 1)),
+    radius: size === 'big' ? 30 : 22,
+    scale: size === 'big' ? 2.3 : 1.6,
+  };
+};
 export const BOSS_GEMS = 12;
 export const BOSS_GEM_VALUE = 3;
 export const BOSS_WOOD = (round: number) => 10 + round * 5;

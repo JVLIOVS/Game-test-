@@ -4,7 +4,8 @@ import { orbitPositions } from '../game/systems/weapons';
 import type { GameState, Pad } from '../game/types';
 import { t } from '../i18n';
 import type { JoystickState } from '../input/joystick';
-import { PALETTE as C, fill, stroke } from './palette';
+import { worldDef } from '../game/data/worlds';
+import { PALETTE as C, THEME, fill, setTheme, stroke } from './palette';
 import {
   drawAxeIcon,
   drawBomb,
@@ -36,7 +37,7 @@ export interface Fonts {
 
 const VIEW_MARGIN = 160;
 const BORDER_SPACING = 56;
-const CAMP_RADIUS = 250;
+const CAMP_RADIUS = 300;
 
 /** Zoom adapté à l'écran : plus de carte visible sur iPad. */
 function cameraScale(width: number) {
@@ -156,6 +157,8 @@ export function drawWorld(
   joystick: JoystickState,
 ) {
   const { hero, map, base, cycle } = state;
+  setTheme(worldDef(state.world));
+  const G = THEME().ground;
   const paints = sharedPaints();
   const scale = cameraScale(view.width);
   const halfW = view.width / scale / 2;
@@ -173,26 +176,26 @@ export function drawWorld(
   const bottom = camY + halfH + VIEW_MARGIN;
   const visible = (x: number, y: number) => x > left && x < right && y > top && y < bottom;
 
-  canvas.drawColor(Skia.Color(C.void));
+  canvas.drawColor(Skia.Color(G.void));
   canvas.save();
   canvas.translate(view.width / 2, view.height / 2);
   canvas.scale(scale, scale);
   canvas.translate(-camX, -camY);
 
   // Sol
-  canvas.drawRRect(Skia.RRectXY(Skia.XYWHRect(-12, -12, map.width + 24, map.height + 24), 40, 40), fill(C.grassDark));
-  canvas.drawRRect(Skia.RRectXY(Skia.XYWHRect(0, 0, map.width, map.height), 34, 34), fill(C.grass));
+  canvas.drawRRect(Skia.RRectXY(Skia.XYWHRect(-12, -12, map.width + 24, map.height + 24), 40, 40), fill(G.grassDark));
+  canvas.drawRRect(Skia.RRectXY(Skia.XYWHRect(0, 0, map.width, map.height), 34, 34), fill(G.grass));
   for (const d of state.decor) {
     if (!visible(d.x, d.y)) continue;
     const s = d.size;
     switch (d.kind) {
       case 'patch':
-        canvas.drawOval(Skia.XYWHRect(d.x - 60 * s, d.y - 30 * s, 120 * s, 60 * s), fill(d.variant % 2 ? C.grassLight : C.grassDark));
+        canvas.drawOval(Skia.XYWHRect(d.x - 60 * s, d.y - 30 * s, 120 * s, 60 * s), fill(d.variant % 2 ? G.grassLight : G.grassDark));
         break;
       case 'tuft':
-        canvas.drawOval(Skia.XYWHRect(d.x - 6 * s, d.y - 9 * s, 4 * s, 10 * s), fill(C.tuft));
-        canvas.drawOval(Skia.XYWHRect(d.x - 2 * s, d.y - 12 * s, 4 * s, 13 * s), fill(C.tuft));
-        canvas.drawOval(Skia.XYWHRect(d.x + 2 * s, d.y - 9 * s, 4 * s, 10 * s), fill(C.tuft));
+        canvas.drawOval(Skia.XYWHRect(d.x - 6 * s, d.y - 9 * s, 4 * s, 10 * s), fill(G.tuft));
+        canvas.drawOval(Skia.XYWHRect(d.x - 2 * s, d.y - 12 * s, 4 * s, 13 * s), fill(G.tuft));
+        canvas.drawOval(Skia.XYWHRect(d.x + 2 * s, d.y - 9 * s, 4 * s, 10 * s), fill(G.tuft));
         break;
       case 'flower':
         canvas.drawCircle(d.x, d.y, 4.5 * s, fill(C.flowers[d.variant % C.flowers.length]));
@@ -205,21 +208,21 @@ export function drawWorld(
   }
   // Terre battue du camp
   if (visible(base.x, base.y) || Math.abs(base.x - camX) < halfW + CAMP_RADIUS) {
-    canvas.drawCircle(base.x, base.y, CAMP_RADIUS + 8, fill(C.dirtDark));
-    canvas.drawCircle(base.x, base.y, CAMP_RADIUS, fill(C.dirt));
+    canvas.drawCircle(base.x, base.y, CAMP_RADIUS + 8, fill(G.dirtDark));
+    canvas.drawCircle(base.x, base.y, CAMP_RADIUS, fill(G.dirt));
   }
 
   // Bordure de buissons sombres autour de la carte
   for (let x = 0; x <= map.width; x += BORDER_SPACING) {
     if (x > left && x < right) {
-      if (top < 0) canvas.drawCircle(x, -18 + ((x / BORDER_SPACING) % 2) * 8, 38, fill(C.void));
-      if (bottom > map.height) canvas.drawCircle(x, map.height + 18 - ((x / BORDER_SPACING) % 2) * 8, 38, fill(C.void));
+      if (top < 0) canvas.drawCircle(x, -18 + ((x / BORDER_SPACING) % 2) * 8, 38, fill(G.void));
+      if (bottom > map.height) canvas.drawCircle(x, map.height + 18 - ((x / BORDER_SPACING) % 2) * 8, 38, fill(G.void));
     }
   }
   for (let y = 0; y <= map.height; y += BORDER_SPACING) {
     if (y > top && y < bottom) {
-      if (left < 0) canvas.drawCircle(-18 + ((y / BORDER_SPACING) % 2) * 8, y, 38, fill(C.void));
-      if (right > map.width) canvas.drawCircle(map.width + 18 - ((y / BORDER_SPACING) % 2) * 8, y, 38, fill(C.void));
+      if (left < 0) canvas.drawCircle(-18 + ((y / BORDER_SPACING) % 2) * 8, y, 38, fill(G.void));
+      if (right > map.width) canvas.drawCircle(map.width + 18 - ((y / BORDER_SPACING) % 2) * 8, y, 38, fill(G.void));
     }
   }
 
@@ -241,7 +244,7 @@ export function drawWorld(
   for (const s of state.structures) {
     if (!visible(s.x, s.y)) continue;
     if (s.kind !== 'wall') drawShadow(canvas, s.x + 6, s.y + 4, s.radius * 1.1, s.radius * 0.4);
-    drawables.push({ y: s.y, draw: () => drawStructure(canvas, s, base.x, base.y, state.time) });
+    drawables.push({ y: s.y, draw: () => drawStructure(canvas, s, base.x, base.y, state.time, state.perks.engineer) });
   }
   for (const c of state.chests) {
     if (!visible(c.x, c.y)) continue;
@@ -258,20 +261,20 @@ export function drawWorld(
   }
   if (!hero.dead) {
     drawShadow(canvas, hero.x, hero.y, 16, 6);
-    drawables.push({ y: hero.y, draw: () => drawHero(canvas, hero, state.time) });
+    drawables.push({ y: hero.y, draw: () => drawHero(canvas, hero, state.time, state.equipment) });
   }
   drawables.sort((a, b) => a.y - b.y);
   for (const d of drawables) d.draw();
 
   // Haches tournoyantes
-  if (!hero.dead) for (const o of orbitPositions(state)) drawSpinningAxe(canvas, o.x, o.y, o.angle);
+  if (!hero.dead) for (const o of orbitPositions(state)) drawSpinningAxe(canvas, o.x, o.y, o.angle, state.perks.orbit);
 
   // Bombes en vol (ombre au sol + bombe en cloche)
   for (const b of state.bombs) {
     const x = b.fromX + (b.toX - b.fromX) * b.t;
     const y = b.fromY + (b.toY - b.fromY) * b.t;
     drawShadow(canvas, x, y + 30 * (1 - b.t), 8, 3);
-    drawBomb(canvas, x, y - Math.sin(Math.PI * b.t) * 110, state.time);
+    drawBomb(canvas, x, y - Math.sin(Math.PI * b.t) * (b.cluster < 0 ? 50 : 110), state.time, b.phase);
   }
 
   // Éclairs
@@ -279,8 +282,8 @@ export function drawWorld(
     const a = bolt.life / 0.25;
     let px = bolt.x;
     let py = bolt.y - 320;
-    const glow = stroke(C.boltGlow, 12);
-    const core = stroke(C.bolt, 4);
+    const glow = stroke(bolt.phase >= 3 ? C.boltGlowStorm : C.boltGlow, 8 + bolt.phase * 4);
+    const core = stroke(bolt.phase >= 3 ? C.boltStorm : C.bolt, 2 + bolt.phase * 1.5);
     glow.setAlphaf(a);
     core.setAlphaf(a);
     for (let k = 1; k <= 6; k++) {
@@ -295,14 +298,24 @@ export function drawWorld(
     core.setAlphaf(1);
   }
 
-  // Flèches
+  // Flèches et boulets (l'apparence suit la phase de l'atout)
   for (const p of state.projectiles) {
+    if (p.style === 'cannon') {
+      canvas.drawCircle(p.x, p.y, 7, fill(C.outline));
+      canvas.drawCircle(p.x - 2, p.y - 2, 2, fill(C.white));
+      continue;
+    }
     const len = Math.hypot(p.vx, p.vy) || 1;
     const dx = (p.vx / len) * 16;
     const dy = (p.vy / len) * 16;
+    if (p.style === 'bow2' || p.style === 'bow3') {
+      const glowColor = p.style === 'bow2' ? C.fireGlow : C.iceGlow;
+      canvas.drawLine(p.x - dx * 2, p.y - dy * 2, p.x, p.y, stroke(glowColor, 10));
+    }
+    const shaft = p.style === 'bow2' ? '#FF6B2B' : p.style === 'bow3' ? '#5BE0FF' : C.arrow;
     canvas.drawLine(p.x - dx, p.y - dy, p.x, p.y, stroke(C.outline, 5));
-    canvas.drawLine(p.x - dx, p.y - dy, p.x, p.y, stroke(C.arrow, 2.5));
-    canvas.drawCircle(p.x, p.y, 3, fill(C.white));
+    canvas.drawLine(p.x - dx, p.y - dy, p.x, p.y, stroke(shaft, 2.5));
+    canvas.drawCircle(p.x, p.y, p.style === 'bow3' ? 4.5 : 3, fill(p.style === 'bow2' ? '#FFE14D' : C.white));
   }
 
   // Particules

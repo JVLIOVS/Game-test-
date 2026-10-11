@@ -11,7 +11,7 @@ import {
   BOSS_WOOD,
   ZOMBIE_WOOD_DROP,
 } from '../constants';
-import { damageMult } from '../data/perks';
+import { damageMult } from '../data/equipment';
 import { FX_COLORS } from '../fxColors';
 import type { GameState, Zombie } from '../types';
 import { dist, gain } from './common';

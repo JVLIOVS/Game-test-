@@ -1,5 +1,4 @@
 import {
-  BOSS_RADIUS,
   bossStats,
   ZOMBIE_AGGRO_RANGE,
   ZOMBIE_ATTACK_INTERVAL,
@@ -24,8 +23,8 @@ function edgePoint(state: GameState) {
 }
 
 /** Le boss arrive du côté le plus proche du héros, pour qu'on le voie venir. */
-export function spawnBoss(state: GameState, round: number) {
-  const st = bossStats(round);
+export function spawnBoss(state: GameState, round: number, size: 'mini' | 'big') {
+  const st = bossStats(round, size);
   const { width, height } = state.map;
   const hx = state.hero.x;
   const hy = state.hero.y;
@@ -43,7 +42,7 @@ export function spawnBoss(state: GameState, round: number) {
     y,
     vx: 0,
     vy: 0,
-    radius: BOSS_RADIUS,
+    radius: st.radius,
     hp: st.hp,
     maxHp: st.hp,
     speed: st.speed,
@@ -54,12 +53,13 @@ export function spawnBoss(state: GameState, round: number) {
     walkTime: 0,
     variant: 0,
     boss: true,
+    bossSize: size,
     orbitCooldown: 0,
   });
 }
 
 export function spawnZombie(state: GameState, night: number) {
-  const wave = zombieWave(night);
+  const wave = zombieWave(night, state.world);
   const { x, y } = edgePoint(state);
   state.zombies.push({
     id: nextId(state),
@@ -78,6 +78,7 @@ export function spawnZombie(state: GameState, night: number) {
     walkTime: Math.random() * 10,
     variant: Math.floor(Math.random() * 3),
     boss: false,
+    bossSize: 'none',
     orbitCooldown: 0,
   });
 }

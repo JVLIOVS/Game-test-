@@ -39,6 +39,9 @@ export function createGame(): GameState {
     pendingLevelUps: 0,
     bossesKilled: 0,
     bossAlive: false,
+    world: 0,
+    roundInWorld: 0,
+    equipment: { sword: 0, shield: 0, armor: 0 },
     hero: {
       x: base.x + LAYOUT.heroSpawn.x,
       y: base.y + LAYOUT.heroSpawn.y,

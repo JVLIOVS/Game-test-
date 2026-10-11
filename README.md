@@ -14,14 +14,15 @@ Une seule carte, ta base au centre, la forêt autour.
 - **Fin de partie** : si la baraque tombe. Écran de bilan et bouton « Rejouer ».
 - Particules, secousses d'écran, vibrations, chiffres de dégâts, annonces animées, textes FR / EN.
 
-**Atouts (étape 3)** : tuer des zombies laisse des gemmes d'XP. À chaque niveau, le jeu se met en pause et propose 3 cartes tirées au sort parmi 10 atouts :
-- 4 armes automatiques : arc, haches tournoyantes, bombes, éclair ;
-- 6 bonus : vigueur, rapidité, force, aimant, bûcheron, architecte.
+**Atouts** : tuer des zombies laisse des gemmes d'XP. À chaque niveau, le jeu se met en pause et propose 3 cartes tirées au sort parmi 5 atouts : arc, haches tournoyantes, bombes, éclair, ingénieur (tourelles).
+On ne peut posséder que **3 atouts** : une fois les 3 choisis, les cartes ne proposent plus que leurs évolutions.
+Chaque atout a **3 phases**, visibles en jeu (ex. arc → arc de feu → arc de glace). La phase 2 se débloque après le 1er boss, la phase 3 après le 2e.
 
-Chaque atout a 3 évolutions. L'évolution 2 se débloque après le 1er boss, l'évolution 3 après le 2e.
-Chaque nuit se termine par un **boss** : le battre valide la manche (grosse récompense en XP et en bois).
+**Mondes** : Ferme → Royaume → Âge industriel → Futur. Chaque monde a 3 manches : mini-boss, mini-boss, gros boss. Battre le gros boss fait changer de monde : décor, bâtiments et zombies changent, l'invasion est plus forte, et 2 tourelles de plus sont disponibles.
 
-Tester dans un navigateur : ajouter à l'adresse `#riche` (200 bois), `#nuit` (la nuit tombe tout de suite), `#cartes` (un choix d'atout), `#boss` (le boss arrive), `#armes` (les 4 armes). Combinables : `#boss-armes`.
+**Équipement** : chaque manche gagnée donne une pièce du palier du monde (bois, fer, or, plasma) : épée (puissance), bouclier (défense), armure (agilité et vie). Visible sur le héros.
+
+Tester dans un navigateur, en ajoutant à l'adresse : `#riche` (200 bois), `#nuit`, `#cartes` (un choix d'atout), `#boss`, `#armes` (3 atouts), `#monde2` à `#monde4`, `#equipement`. Combinables : `#monde3-equipement-boss-armes`.
 
 `npm run playtest` fait jouer un robot dans la simulation et affiche le déroulé (utile pour l'équilibrage).
 
@@ -31,7 +32,8 @@ Tester dans un navigateur : ajouter à l'adresse `#riche` (200 bois), `#nuit` (l
 |---|---|---|
 | 1 | Héros qui bouge et récolte du bois | ✅ |
 | 2 | Base à construire avec le bois, vagues de zombies la nuit, mort et coffre | ✅ |
-| 3 | XP, cartes d'atouts (10 atouts × 3 évolutions), boss de fin de manche | ✅ |
+| 3 | XP, cartes d'atouts, boss de fin de manche | ✅ |
+| 3b | 5 atouts / 3 emplacements / 3 phases visibles, 4 mondes (mini-boss, mini-boss, gros boss), épée, bouclier, armure | ✅ |
 | 4 | Micro-objectifs, XP de compte, skins et atouts à débloquer (avec sauvegarde) | Expo Go |
 | 5 | Pierre et nourriture, faim, nouveaux emplacements (ferme, entrepôt) | Expo Go |
 | 6 | Missions quotidiennes, récompense de connexion | Expo Go |
@@ -48,7 +50,7 @@ src/
     types.ts       État du jeu (sérialisable : base des sauvegardes et des raids V2)
     constants.ts   Équilibrage
     simulation.ts  createGame() / step(state, input, dt)
-    data/          Catalogue des atouts (perks.ts)
+    data/          Atouts (perks.ts), mondes (worlds.ts), équipement (equipment.ts)
     systems/       Héros, combat, armes, XP, arbres, construction, zombies, tours, cycle jour/nuit, effets
     world/         Carte, génération, plan de la base
   render/      Dessin Skia (sprites générés par code, remplaçables par des images)

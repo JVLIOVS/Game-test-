@@ -1,5 +1,5 @@
-import { GEM_PICKUP_RADIUS, GEM_PULL_SPEED, HERO_MAX_HP, xpToNext } from '../constants';
-import { PERK_VALUES, drawCards } from '../data/perks';
+import { GEM_PICKUP_RADIUS, GEM_PULL_SPEED, xpToNext } from '../constants';
+import { GEM_MAGNET_RADIUS, drawCards } from '../data/perks';
 import { FX_COLORS } from '../fxColors';
 import type { CardId, GameState } from '../types';
 import { dist, gain, nextId } from './common';
@@ -27,7 +27,7 @@ function addXp(state: GameState, amount: number) {
 
 export function updateGems(state: GameState, dt: number) {
   const hero = state.hero;
-  const magnet = PERK_VALUES.magnet.radius[state.perks.magnet];
+  const magnet = GEM_MAGNET_RADIUS;
   for (let i = state.gems.length - 1; i >= 0; i--) {
     const g = state.gems[i];
     g.age += dt;
@@ -61,18 +61,8 @@ export function chooseCard(state: GameState, card: CardId) {
     gain(state, 'wood', 25, hero.x, hero.y - 60);
   } else {
     state.perks[card]++;
-    if (card === 'vigor') {
-      const before = hero.maxHp;
-      hero.maxHp = HERO_MAX_HP + PERK_VALUES.vigor.hpBonus[state.perks.vigor];
-      hero.hp += hero.maxHp - before;
-    }
-    if (card === 'architect') {
-      for (const s of state.structures) {
-        const ratio = s.hp / s.maxHp;
-        s.maxHp = Math.round(s.maxHp * ((1 + PERK_VALUES.architect.hpBonus[state.perks.architect]) / (1 + PERK_VALUES.architect.hpBonus[state.perks.architect - 1])));
-        s.hp = Math.round(s.maxHp * ratio);
-      }
-    }
+    // L'atout Ingénieur peut ouvrir de nouveaux emplacements de tourelles.
+    if (card === 'engineer') state.padsDirty = true;
   }
   spawnBurst(state, hero.x, hero.y, 30, 14, 'confetti', FX_COLORS.confetti, 1);
   state.pendingLevelUps--;

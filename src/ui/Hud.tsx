@@ -2,7 +2,10 @@ import { useEffect } from 'react';
 import { StyleSheet, Text, View } from 'react-native';
 import Animated, { useAnimatedStyle, useSharedValue, withSequence, withSpring, withTiming } from 'react-native-reanimated';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
-import { t } from '../i18n';
+import { EQUIP_ICONS, EQUIP_TIER_COLORS } from '../game/data/equipment';
+import { CARD_ICONS, PERK_SLOTS } from '../game/data/perks';
+import type { CardId, EquipSlot } from '../game/types';
+import { t, type TranslationKey } from '../i18n';
 import { FONT } from './fonts';
 import type { HudState } from './hudState';
 
@@ -46,11 +49,12 @@ export function Hud({ hud }: { hud: HudState }) {
       <View style={[styles.column, styles.right]}>
         <View style={[styles.pill, night && styles.pillNight]}>
           <View style={[styles.sun, night && styles.moon]} />
-          <Text style={styles.phase}>
-            {night ? t('hud.night', { n: hud.night }) : t('hud.day', { n: hud.night + 1 })}
-            {'  '}
-            <Text style={styles.phaseSub}>{night ? t('hud.zombies', { n: hud.zombiesLeft }) : formatTime(hud.dayTimer)}</Text>
-          </Text>
+          <View>
+            <Text style={styles.phase}>{t(`world.${hud.worldId}` as TranslationKey)}</Text>
+            <Text style={styles.phaseSub}>
+              {t('hud.round', { n: hud.round })} · {night ? t('hud.zombies', { n: hud.zombiesLeft }) : formatTime(hud.dayTimer)}
+            </Text>
+          </View>
         </View>
         <View style={styles.row}>
           <Text style={styles.label}>{t('hud.base')}</Text>
@@ -63,6 +67,41 @@ export function Hud({ hud }: { hud: HudState }) {
         <Text style={styles.levelBadge}>{t('hud.level', { n: hud.level })}</Text>
         <View style={styles.xpBack}>
           <View style={[styles.xpFill, { width: `${Math.round(hud.xpRatio * 100)}%` }]} />
+        </View>
+      </View>
+
+      <View style={styles.gearRow}>
+        <View style={styles.slots}>
+          {Array.from({ length: PERK_SLOTS }, (_, i) => {
+            const entry = hud.slots ? hud.slots.split(',')[i] : undefined;
+            const [id, lvl] = entry ? entry.split(':') : [];
+            return (
+              <View key={i} style={[styles.slot, !id && styles.slotEmpty]}>
+                {id ? (
+                  <>
+                    <Text style={styles.slotIcon}>{CARD_ICONS[id as CardId]}</Text>
+                    <View style={styles.slotPips}>
+                      {[1, 2, 3].map((n) => (
+                        <View key={n} style={[styles.slotPip, n <= Number(lvl) && styles.slotPipOn]} />
+                      ))}
+                    </View>
+                  </>
+                ) : (
+                  <Text style={styles.slotPlus}>+</Text>
+                )}
+              </View>
+            );
+          })}
+        </View>
+        <View style={styles.slots}>
+          {(['sword', 'shield', 'armor'] as EquipSlot[]).map((slot) => {
+            const tier = hud[slot];
+            return (
+              <View key={slot} style={[styles.equip, { borderColor: tier ? EQUIP_TIER_COLORS[tier] : 'rgba(255,255,255,0.25)' }, !tier && styles.slotEmpty]}>
+                <Text style={styles.equipIcon}>{EQUIP_ICONS[slot]}</Text>
+              </View>
+            );
+          })}
         </View>
       </View>
 
@@ -97,6 +136,34 @@ const styles = StyleSheet.create({
   xpBack: { flex: 1, height: 12, borderRadius: 6, backgroundColor: 'rgba(43,34,56,0.8)', padding: 2 },
   xpFill: { height: 8, borderRadius: 4, backgroundColor: '#5BE0FF' },
   bossRow: { alignItems: 'center', gap: 2, marginTop: 4 },
+  gearRow: { flexDirection: 'row', justifyContent: 'space-between' },
+  slots: { flexDirection: 'row', gap: 6 },
+  slot: {
+    width: 40,
+    height: 44,
+    borderRadius: 10,
+    backgroundColor: 'rgba(43,34,56,0.82)',
+    borderWidth: 2,
+    borderColor: '#2B2238',
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  slotEmpty: { opacity: 0.45 },
+  slotIcon: { fontSize: 20 },
+  slotPlus: { fontSize: 20, color: '#FFFFFF', fontFamily: FONT.bold },
+  slotPips: { flexDirection: 'row', gap: 2, marginTop: 1 },
+  slotPip: { width: 7, height: 4, borderRadius: 2, backgroundColor: 'rgba(255,255,255,0.25)' },
+  slotPipOn: { backgroundColor: '#FFD25A' },
+  equip: {
+    width: 36,
+    height: 36,
+    borderRadius: 18,
+    backgroundColor: 'rgba(43,34,56,0.82)',
+    borderWidth: 3,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  equipIcon: { fontSize: 17 },
   bossLabel: { color: '#FFB020', fontSize: 16, fontFamily: FONT.bold, textShadowColor: '#2B2238', textShadowRadius: 4 },
   bossBack: { width: '80%', maxWidth: 320, height: 16, borderRadius: 8, backgroundColor: 'rgba(43,34,56,0.9)', padding: 3, borderWidth: 2, borderColor: '#2B2238' },
   bossFill: { height: 6, borderRadius: 3, backgroundColor: '#FF5A5A' },

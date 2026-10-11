@@ -5,7 +5,8 @@ import { useSharedValue } from 'react-native-reanimated';
 import { createGame, step } from '../game/simulation';
 import { chooseCard } from '../game/systems/progression';
 import type { CardId, GameEvent } from '../game/types';
-import { t } from '../i18n';
+import { worldDef } from '../game/data/worlds';
+import { t, type TranslationKey } from '../i18n';
 import { createJoystick, joystickEnd, joystickMove, joystickStart, readInput } from '../input/joystick';
 import { applyDebugHash } from '../platform/debug';
 import { haptics } from '../platform/haptics';
@@ -45,12 +46,26 @@ export function GameScreen() {
   const bannerTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
   const bannerId = useRef(0);
 
-  const showBanner = useCallback((b: Omit<BannerData, 'id'>) => {
+  // File d'attente : plusieurs annonces peuvent arriver en même temps (manche, équipement, monde).
+  const bannerQueue = useRef<Omit<BannerData, 'id'>[]>([]);
+  const nextBanner = useCallback(() => {
+    const b = bannerQueue.current.shift();
+    if (!b) {
+      bannerTimer.current = null;
+      setBanner(null);
+      return;
+    }
     bannerId.current++;
     setBanner({ ...b, id: bannerId.current });
-    if (bannerTimer.current) clearTimeout(bannerTimer.current);
-    bannerTimer.current = setTimeout(() => setBanner(null), BANNER_TIME);
+    bannerTimer.current = setTimeout(nextBanner, BANNER_TIME);
   }, []);
+  const showBanner = useCallback(
+    (b: Omit<BannerData, 'id'>) => {
+      bannerQueue.current.push(b);
+      if (!bannerTimer.current) nextBanner();
+    },
+    [nextBanner],
+  );
 
   useEffect(() => () => {
     if (bannerTimer.current) clearTimeout(bannerTimer.current);
@@ -113,11 +128,35 @@ export function GameScreen() {
           break;
         case 'roundCleared':
           haptics.success();
-          showBanner({ title: t('banner.round', { n: ev.round }), sub: ev.round <= 2 ? t('banner.evolution') : t('banner.roundSub'), tone: 'day' });
+          showBanner({ title: t('banner.round', { n: ev.round }), sub: gameRef.current.bossesKilled <= 2 ? t('banner.evolution') : t('banner.roundSub'), tone: 'day' });
           break;
-        case 'bossSpawn':
+        case 'bossSpawn': {
           haptics.heavy();
-          showBanner({ title: t('banner.boss'), sub: t('banner.bossSub'), tone: 'bad' });
+          const big = ev.round >= 3;
+          showBanner({
+            title: big ? t('banner.bigBoss') : t('banner.miniBoss'),
+            sub: big ? t('banner.bigBossSub') : t('banner.bossSub'),
+            tone: 'bad',
+          });
+          break;
+        }
+        case 'equipGained': {
+          haptics.success();
+          const stats = { sword: 25 * ev.tier, shield: Math.min(60, 15 * ev.tier), armor: 7 * ev.tier };
+          showBanner({
+            title: `${t(`equip.${ev.slot}`)} ${t(`equip.tier${Math.min(4, ev.tier)}` as TranslationKey)} !`,
+            sub: t(`equip.${ev.slot}Sub`, { n: stats[ev.slot] }),
+            tone: 'good',
+          });
+          break;
+        }
+        case 'worldAdvance':
+          haptics.heavy();
+          showBanner({
+            title: t('banner.world', { world: t(`world.${worldDef(ev.world).id}` as TranslationKey) }),
+            sub: t('banner.worldSub'),
+            tone: 'day',
+          });
           break;
         case 'bossKilled':
           haptics.heavy();
@@ -197,6 +236,9 @@ export function GameScreen() {
 
   const restart = useCallback(() => {
     gameRef.current = createGame();
+    bannerQueue.current = [];
+    if (bannerTimer.current) clearTimeout(bannerTimer.current);
+    bannerTimer.current = null;
     setBanner(null);
   }, []);
 
@@ -227,6 +269,7 @@ export function GameScreen() {
           level={hud.level}
           cards={hud.choice.split(',') as CardId[]}
           levels={hud.choiceLevels.split(',').map(Number)}
+          ownedCount={hud.slots ? hud.slots.split(',').length : 0}
           onPick={pickCard}
         />
       )}

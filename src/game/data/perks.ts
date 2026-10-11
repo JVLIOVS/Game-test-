@@ -1,42 +1,34 @@
 import type { CardId, GameState, PerkId } from '../types';
 
-// Les atouts : 4 armes automatiques et 6 bonus. Chacun a 3 évolutions.
-// L'évolution n demande d'avoir battu n - 1 boss : on ne peut pas tout
-// maxer dès la première manche, chaque boss ouvre un nouveau palier.
+// 5 atouts, 3 emplacements : il faut choisir.
+// Tant qu'on a moins de 3 atouts, les cartes proposent des atouts nouveaux ou des évolutions.
+// Avec 3 atouts, les cartes ne proposent plus que leurs évolutions (3 phases chacun).
+// La phase n demande d'avoir battu n - 1 boss.
 
 export const PERK_MAX_LEVEL = 3;
+export const PERK_SLOTS = 3;
 
-export interface PerkDef {
-  kind: 'weapon' | 'bonus';
-  icon: string;
-}
-
-export const PERKS: Record<PerkId, PerkDef> = {
-  bow: { kind: 'weapon', icon: '🏹' },
-  orbit: { kind: 'weapon', icon: '🪓' },
-  bomb: { kind: 'weapon', icon: '💣' },
-  lightning: { kind: 'weapon', icon: '⚡' },
-  vigor: { kind: 'bonus', icon: '❤️' },
-  swift: { kind: 'bonus', icon: '👟' },
-  strength: { kind: 'bonus', icon: '💪' },
-  magnet: { kind: 'bonus', icon: '🧲' },
-  lumberjack: { kind: 'bonus', icon: '🪵' },
-  architect: { kind: 'bonus', icon: '🏰' },
-};
-
-export const PERK_IDS = Object.keys(PERKS) as PerkId[];
+export const PERK_IDS: PerkId[] = ['bow', 'orbit', 'bomb', 'lightning', 'engineer'];
 
 export const CARD_ICONS: Record<CardId, string> = {
-  ...Object.fromEntries(PERK_IDS.map((id) => [id, PERKS[id].icon])),
+  bow: '🏹',
+  orbit: '🪓',
+  bomb: '💣',
+  lightning: '⚡',
+  engineer: '🔧',
   heal: '🍖',
   woodBag: '🎒',
-} as Record<CardId, string>;
+};
 
-/** Bosses à battre pour pouvoir prendre ce niveau. */
+/** Bosses à battre pour pouvoir prendre cette phase. */
 export const bossesRequired = (level: number) => level - 1;
 
+export const ownedPerks = (state: GameState) => PERK_IDS.filter((id) => state.perks[id] > 0);
+
 export function canTake(state: GameState, id: PerkId) {
-  const next = state.perks[id] + 1;
+  const current = state.perks[id];
+  if (current === 0 && ownedPerks(state).length >= PERK_SLOTS) return false;
+  const next = current + 1;
   return next <= PERK_MAX_LEVEL && state.bossesKilled >= bossesRequired(next);
 }
 
@@ -53,22 +45,17 @@ export function drawCards(state: GameState, count = 3): CardId[] {
   return cards;
 }
 
-// Effets chiffrés (index = niveau de l'atout, 0 = pas pris).
+// Effets chiffrés (index = phase de l'atout, 0 = pas pris).
 export const PERK_VALUES = {
-  bow: { interval: [0, 1.1, 0.95, 0.8], arrows: [0, 1, 2, 3], damage: 16 },
-  orbit: { count: [0, 1, 2, 3], damage: [0, 14, 18, 24], radius: 62 },
-  bomb: { interval: [0, 3.2, 2.6, 2], radius: [0, 70, 85, 100], damage: [0, 30, 40, 55] },
-  lightning: { interval: [0, 2.6, 2.2, 1.8], strikes: [0, 1, 2, 3], damage: 38 },
-  vigor: { hpBonus: [0, 30, 60, 100] },
-  swift: { speedBonus: [0, 0.12, 0.24, 0.36] },
-  strength: { damageBonus: [0, 0.2, 0.4, 0.65] },
-  magnet: { radius: [70, 120, 170, 240] },
-  lumberjack: { woodPerHit: [1, 2, 2, 3], fellBonus: [2, 2, 4, 5] },
-  architect: { hpBonus: [0, 0.3, 0.6, 1], towerRate: [1, 1.2, 1.4, 1.7] },
+  bow: { interval: [0, 1.05, 0.85, 0.7], arrows: [0, 1, 2, 3], damage: [0, 16, 22, 30], pierce: [0, 0, 0, 1] },
+  orbit: { count: [0, 1, 2, 3], damage: [0, 14, 20, 30], radius: [0, 62, 70, 80], size: [0, 1, 1.25, 1.5] },
+  bomb: { interval: [0, 3, 2.5, 2], radius: [0, 70, 85, 95], damage: [0, 30, 42, 50], cluster: [0, 1, 1, 3] },
+  lightning: { interval: [0, 2.5, 2.1, 1.7], strikes: [0, 1, 2, 4], damage: [0, 38, 46, 56] },
+  engineer: { towerDamage: [1, 1.35, 1.6, 1.9], arrows: [1, 1, 2, 2], explosive: [0, 0, 0, 1], extraSlots: [0, 1, 1, 2] },
 };
 
-export const damageMult = (state: GameState) => 1 + PERK_VALUES.strength.damageBonus[state.perks.strength];
+export const GEM_MAGNET_RADIUS = 110;
 
 export function emptyPerks(): Record<PerkId, number> {
-  return Object.fromEntries(PERK_IDS.map((id) => [id, 0])) as Record<PerkId, number>;
+  return { bow: 0, orbit: 0, bomb: 0, lightning: 0, engineer: 0 };
 }

@@ -31,11 +31,16 @@ export function wallPadPosition(side: WallSide): Vec2 {
 export const LAYOUT = {
   house: { x: 0, y: 0 },
   houseUpgradePad: { x: 0, y: 112 },
-  workshop: { x: -122, y: 10 },
-  axePad: { x: -122, y: 104 },
+  workshop: { x: -130, y: 20 },
+  axePad: { x: -130, y: 112 },
+  /** Emplacements de tourelles, débloqués un par un (baraque, mondes, atout Ingénieur). */
   towers: [
-    { slot: 'tower-1', x: 112, y: -72, minHouse: 2 },
-    { slot: 'tower-2', x: -100, y: -96, minHouse: 3 },
+    { slot: 'tower-1', x: 130, y: -85 },
+    { slot: 'tower-2', x: -120, y: -110 },
+    { slot: 'tower-3', x: 190, y: 20 },
+    { slot: 'tower-4', x: -190, y: -40 },
+    { slot: 'tower-5', x: -70, y: 190 },
+    { slot: 'tower-6', x: 145, y: 135 },
   ],
   heroSpawn: { x: 70, y: 165 },
 } as const;
