@@ -1,8 +1,26 @@
-# Survival Challenge
+# Last EmberZ
 
 Jeu mobile iOS de survie en 2D vue du dessus, style cartoon. Expo + React Native + TypeScript, rendu avec React Native Skia.
 
-## État actuel : étape 2 (boucle de jeu complète)
+L'accueil propose deux modes.
+
+## Mode Refuges (nouveau)
+
+Six survivants (toi et cinq robots) démarrent au centre d'une arène fermée. Huit chambres l'entourent, avec un autel au milieu où dort le **Démon**.
+
+- **Choix (20 s)** : cours dans une chambre libre. Une fois entré, tu y restes.
+- **Siège (7 min)** : reste sur le **générateur** pour gagner de l'or (40 % ailleurs). Marche sur un emplacement pour acheter :
+  - porte en 5 niveaux (bois → fer → acier → blindée → titane) ;
+  - générateur en 6 niveaux ;
+  - 4 tourelles en 4 niveaux (simple → double → canon → laser) ;
+  - réparation de la porte.
+- **Démon** : il cherche la chambre la moins défendue et casse la porte. Il dévore le survivant, puis gagne un niveau toutes les 50 s. Blessé, il retourne se soigner à l'autel. Les tourelles peuvent le tuer.
+- **Vagues de zombies** : toutes les 35 s, avec un mini-boss une vague sur quatre.
+- **But** : être le dernier trouvé, ou tenir jusqu'à la fin. Chaque partie rapporte des âmes.
+
+Code : `src/modes/refuge/` (simulation, robots, rendu) et `src/screens/RefugeScreen.tsx`. Prochaine étape : jouer le rôle du Démon.
+
+## Mode Vagues
 
 Une seule carte, ta base au centre, la forêt autour.
 
@@ -99,3 +117,5 @@ npm start            # serveur de développement Expo
 npm run typecheck    # vérification TypeScript
 npm run web:build    # version web dans dist/
 ```
+
+Robots de test : `npm run playtest -- 5` (mode Vagues) et `npx tsx scripts/refugePlaytest.ts 5` (mode Refuges). Version web : ajoute `#refuge` à l'adresse pour lancer directement le mode Refuges.

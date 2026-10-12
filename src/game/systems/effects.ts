@@ -2,8 +2,11 @@ import { GRAVITY, MAX_PARTICLES } from '../constants';
 import { fxRandom } from '../rng';
 import type { GameState, ParticleKind } from '../types';
 
+/** Ce dont les effets ont besoin : partagé par tous les modes de jeu. */
+export type FxState = Pick<GameState, 'particles' | 'texts' | 'flyingLogs' | 'trauma' | 'time'>;
+
 export function spawnBurst(
-  state: GameState,
+  state: FxState,
   x: number,
   y: number,
   z: number,
@@ -36,7 +39,7 @@ export function spawnBurst(
 }
 
 export function spawnText(
-  state: GameState,
+  state: FxState,
   x: number,
   y: number,
   text: string,
@@ -59,11 +62,11 @@ export function spawnText(
   });
 }
 
-export function addTrauma(state: GameState, amount: number) {
+export function addTrauma(state: FxState, amount: number) {
   state.trauma = Math.min(1, state.trauma + amount);
 }
 
-export function updateEffects(state: GameState, dt: number) {
+export function updateEffects(state: FxState, dt: number) {
   const ps = state.particles;
   for (let i = ps.length - 1; i >= 0; i--) {
     const p = ps[i];

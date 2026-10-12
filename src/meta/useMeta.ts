@@ -91,5 +91,14 @@ export function useMeta() {
     [update],
   );
 
-  return { meta, loaded, buyUpgrade, unlockWeapon, unlockPerk, recordRun };
+  /** Partie du mode Refuges : les âmes sont calculées par le mode lui-même. */
+  const recordSouls = useCallback(
+    (souls: number) => {
+      update((m) => ({ ...m, souls: m.souls + souls, runs: m.runs + 1 }));
+      return souls;
+    },
+    [update],
+  );
+
+  return { meta, loaded, buyUpgrade, unlockWeapon, unlockPerk, recordRun, recordSouls };
 }

@@ -7,6 +7,7 @@ import { t, type TranslationKey } from '../i18n';
 import type { useMeta } from '../meta/useMeta';
 import { META_UPGRADES, PERK_UNLOCKS, WEAPON_UNLOCKS } from '../meta/upgrades';
 import { FONT } from '../ui/fonts';
+import type { Mode } from './Root';
 
 type Meta = ReturnType<typeof useMeta>;
 
@@ -34,25 +35,40 @@ function BuyButton({ cost, souls, done, label, onPress }: { cost: number; souls:
   );
 }
 
-export function MenuScreen({ meta, onPlay }: { meta: Meta; onPlay: () => void }) {
+export function MenuScreen({ meta, onPlay }: { meta: Meta; onPlay: (mode: Mode) => void }) {
   const insets = useSafeAreaInsets();
   const m = meta.meta;
   return (
     <View style={styles.root}>
       <ScrollView contentContainerStyle={[styles.content, { paddingTop: insets.top + 24, paddingBottom: insets.bottom + 40 }]}>
         <Animated.Text entering={ZoomIn.springify().damping(11)} style={styles.title}>
-          Survival{'\n'}Challenge
+          Last{'\n'}EmberZ
         </Animated.Text>
         <SoulBadge n={m.souls} big />
         <Text style={styles.record}>
           {m.runs > 0 ? t('menu.best', { w: m.best.world + 1, n: m.best.night, k: m.best.kills }) : t('menu.firstRun')}
         </Text>
 
-        <Animated.View entering={ZoomIn.delay(150).springify().damping(12)}>
-          <Pressable onPress={onPlay} accessibilityRole="button" style={({ pressed }) => [styles.play, pressed && styles.pressed]}>
-            <Text style={styles.playText}>{t('menu.play')}</Text>
-          </Pressable>
-        </Animated.View>
+        <View style={styles.modes}>
+          {(
+            [
+              { mode: 'waves', icon: '🔥', color: '#7BD35A' },
+              { mode: 'refuge', icon: '🚪', color: '#C77DFF' },
+            ] as const
+          ).map((m, i) => (
+            <Animated.View key={m.mode} entering={ZoomIn.delay(150 + i * 100).springify().damping(12)} style={styles.modeWrap}>
+              <Pressable
+                onPress={() => onPlay(m.mode)}
+                accessibilityRole="button"
+                style={({ pressed }) => [styles.mode, { backgroundColor: m.color }, pressed && styles.pressed]}
+              >
+                <Text style={styles.modeIcon}>{m.icon}</Text>
+                <Text style={styles.modeName}>{t(`mode.${m.mode}`)}</Text>
+                <Text style={styles.modeDesc}>{t(`mode.${m.mode}.desc`)}</Text>
+              </Pressable>
+            </Animated.View>
+          ))}
+        </View>
         <Text style={styles.hint}>{t('menu.hint')}</Text>
 
         <Text style={styles.section}>{t('menu.upgrades')}</Text>
@@ -131,6 +147,21 @@ const styles = StyleSheet.create({
   soulText: { color: '#E6C8FF', fontFamily: FONT.bold, fontSize: 14 },
   soulTextBig: { color: '#E6C8FF', fontFamily: FONT.bold, fontSize: 26 },
   record: { color: '#FFFFFF', fontFamily: FONT.semi, fontSize: 15, textAlign: 'center', opacity: 0.9 },
+  modes: { flexDirection: 'row', flexWrap: 'wrap', gap: 12, justifyContent: 'center', maxWidth: 520 },
+  modeWrap: { width: 166 },
+  mode: {
+    borderRadius: 22,
+    borderWidth: 4,
+    borderColor: '#2B2238',
+    borderBottomWidth: 10,
+    padding: 12,
+    alignItems: 'center',
+    gap: 4,
+    minHeight: 170,
+  },
+  modeIcon: { fontSize: 34 },
+  modeName: { fontSize: 20, color: '#2B2238', fontFamily: FONT.bold, textAlign: 'center' },
+  modeDesc: { fontSize: 12.5, color: '#2B2238', fontFamily: FONT.semi, textAlign: 'center' },
   play: {
     backgroundColor: '#7BD35A',
     borderRadius: 26,

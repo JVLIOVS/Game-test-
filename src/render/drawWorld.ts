@@ -9,6 +9,7 @@ import type { GameState, Pad, Slash } from '../game/types';
 import { t } from '../i18n';
 import type { JoystickState } from '../input/joystick';
 import { worldDef } from '../game/data/worlds';
+import { drawFloatingTexts, drawOutlinedText, drawParticles, drawProjectile } from './fx';
 import { PALETTE as C, THEME, fill, setTheme, stroke } from './palette';
 import {
   drawAnimal,
@@ -86,19 +87,6 @@ function sharedPaints() {
     );
   }
   return { dash: dashPaint!, night: nightPaint!, glow: glowPaint! };
-}
-
-function drawOutlinedText(canvas: SkCanvas, text: string, x: number, y: number, font: SkFont, color: string, alpha = 1) {
-  const w = font.getTextWidth(text);
-  const outline = stroke(C.outline, 5);
-  const body = fill(color);
-  outline.setAlphaf(alpha);
-  body.setAlphaf(alpha);
-  canvas.drawText(text, x - w / 2, y, outline, font);
-  canvas.drawText(text, x - w / 2, y, body, font);
-  outline.setAlphaf(1);
-  body.setAlphaf(1);
-  return w;
 }
 
 function padLabel(pad: Pad): string {
@@ -602,52 +590,10 @@ export function drawWorld(
   }
 
   // Flèches et boulets (l'apparence suit la phase de l'atout)
-  for (const p of state.projectiles) {
-    if (p.style === 'cannon') {
-      canvas.drawCircle(p.x, p.y, 7, fill(C.outline));
-      canvas.drawCircle(p.x - 2, p.y - 2, 2, fill(C.white));
-      continue;
-    }
-    if (p.style === 'magic') {
-      canvas.drawCircle(p.x, p.y, 13, fill('rgba(91,224,255,0.35)'));
-      canvas.drawCircle(p.x, p.y, 7, fill('#5BE0FF'));
-      canvas.drawCircle(p.x - 2, p.y - 2, 3, fill(C.white));
-      continue;
-    }
-    const len = Math.hypot(p.vx, p.vy) || 1;
-    const dx = (p.vx / len) * 16;
-    const dy = (p.vy / len) * 16;
-    if (p.style === 'bow2' || p.style === 'bow3') {
-      const glowColor = p.style === 'bow2' ? C.fireGlow : C.iceGlow;
-      canvas.drawLine(p.x - dx * 2, p.y - dy * 2, p.x, p.y, stroke(glowColor, 10));
-    }
-    const shaft = p.style === 'bow2' ? '#FF6B2B' : p.style === 'bow3' ? '#5BE0FF' : C.arrow;
-    canvas.drawLine(p.x - dx, p.y - dy, p.x, p.y, stroke(C.outline, 5));
-    canvas.drawLine(p.x - dx, p.y - dy, p.x, p.y, stroke(shaft, 2.5));
-    canvas.drawCircle(p.x, p.y, p.style === 'bow3' ? 4.5 : 3, fill(p.style === 'bow2' ? '#FFE14D' : C.white));
-  }
+  for (const p of state.projectiles) drawProjectile(canvas, p);
 
   // Particules
-  for (const p of state.particles) {
-    if (!visible(p.x, p.y)) continue;
-    const alpha = Math.min(1, p.life / (p.maxLife * 0.4));
-    const paint = fill(p.color);
-    paint.setAlphaf(p.kind === 'dust' ? alpha * 0.8 : alpha);
-    if (p.kind === 'dust') {
-      const grow = 1 + (1 - p.life / p.maxLife) * 1.5;
-      canvas.drawCircle(p.x, p.y - p.z, p.size * grow, paint);
-    } else if (p.kind === 'goo') {
-      canvas.drawCircle(p.x, p.y - p.z, p.size, paint);
-    } else {
-      canvas.save();
-      canvas.translate(p.x, p.y - p.z);
-      canvas.rotate((p.rot * 180) / Math.PI, 0, 0);
-      if (p.kind === 'leaf') canvas.drawOval(Skia.XYWHRect(-p.size, -p.size * 0.5, p.size * 2, p.size), paint);
-      else canvas.drawRect(Skia.XYWHRect(-p.size / 2, -p.size / 2, p.size, p.size * 0.7), paint);
-      canvas.restore();
-    }
-    paint.setAlphaf(1);
-  }
+  drawParticles(canvas, state.particles, visible);
 
   // Bûches qui volent vers un emplacement
   for (const l of state.flyingLogs) {
@@ -684,23 +630,7 @@ export function drawWorld(
   }
 
   // Chiffres qui sautent
-  if (fonts.big) {
-    for (const tx of state.texts) {
-      const k = 1 - tx.life / tx.maxLife;
-      const pop = (k < 0.15 ? 0.5 + (k / 0.15) * 0.8 : 1.3 - Math.min(0.3, (k - 0.15) * 1.5)) * tx.size;
-      const alpha = Math.min(1, tx.life / (tx.maxLife * 0.35));
-      canvas.save();
-      canvas.translate(tx.x, tx.y - tx.z);
-      canvas.scale(pop, pop);
-      if (tx.log) {
-        const w = drawOutlinedText(canvas, tx.text, -8, 8, fonts.big, tx.color, alpha);
-        drawLogIcon(canvas, w / 2 + 6, 0, 0.9);
-      } else {
-        drawOutlinedText(canvas, tx.text, 0, 8, fonts.big, tx.color, alpha);
-      }
-      canvas.restore();
-    }
-  }
+  if (fonts.big) drawFloatingTexts(canvas, state.texts, fonts.big);
   canvas.restore();
 
   // Nuit : obscurité autour du héros, lueur chaude autour de la baraque

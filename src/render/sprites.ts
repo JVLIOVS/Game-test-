@@ -234,7 +234,7 @@ export function drawMainWeapon(canvas: SkCanvas, type: WeaponType, tier: number,
   canvas.restore();
 }
 
-export function drawHero(canvas: SkCanvas, hero: Hero, time: number, gear: Record<EquipSlot, number>) {
+export function drawHero(canvas: SkCanvas, hero: Hero, time: number, gear: Record<EquipSlot, number>, shirt: string = C.shirt) {
   const t = tintFor(hero.hurtFlash);
   const walking = hero.walkTime > 0;
   const phase = Math.sin(hero.walkTime * 16);
@@ -252,7 +252,7 @@ export function drawHero(canvas: SkCanvas, hero: Hero, time: number, gear: Recor
 
   // Armure : le torse prend la couleur du palier.
   const armor = gear.armor ? EQUIP_TIER_COLORS[gear.armor] : null;
-  box(canvas, -13, -32, 26, 26, 10, t(armor ?? C.shirt));
+  box(canvas, -13, -32, 26, 26, 10, t(armor ?? shirt));
   canvas.drawRRect(rrect(-13, -14, 26, 8, 4), fill(t(armor ? C.outline : C.shirtDark)));
   if (armor) canvas.drawRRect(rrect(-6, -29, 12, 10, 4), fill(t('rgba(255,255,255,0.35)')));
 

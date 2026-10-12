@@ -248,6 +248,8 @@ export interface Projectile {
   style: 'tower' | 'bolt' | 'magic' | 'bow1' | 'bow2' | 'bow3' | 'cannon';
   /** Rayon d'explosion à l'impact (0 = aucune). */
   splash: number;
+  /** Mode Refuges : refuge dont la tourelle a tiré (pour la prime en or). */
+  roomId?: number;
 }
 
 /** Bombe lancée en cloche, qui explose à l'arrivée. */
