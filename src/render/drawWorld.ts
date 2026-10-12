@@ -2,6 +2,7 @@ import { ClipOp, PaintStyle, Skia, TileMode, type SkCanvas, type SkFont, type Sk
 import { PAD_RADIUS } from '../game/constants';
 import { PERK_VALUES, perkPhase } from '../game/data/perks';
 import { towerRange } from '../game/systems/towers';
+import { CHARGE_LENGTH, WINDUP, slamRadius } from '../game/systems/zombies';
 import { orbitPositions } from '../game/systems/weapons';
 import { soldierHelmet } from '../game/systems/units';
 import type { GameState, Pad, Slash } from '../game/types';
@@ -384,6 +385,38 @@ export function drawWorld(
     drawPadGround(canvas, pad, heroOn, paints.dash, state);
   }
 
+  // Attaques de boss annoncées au sol : la zone rouge se remplit, puis ça frappe.
+  for (const z of state.zombies) {
+    const a = z.ability;
+    if (!a || a.state !== 'windup' || !visible(z.x, z.y)) continue;
+    const k = 1 - a.timer / WINDUP[a.kind];
+    const edge = stroke('rgba(255,60,60,0.9)', 3);
+    const area = fill('rgba(255,60,60,0.18)');
+    const core = fill('rgba(255,60,60,0.35)');
+    if (a.kind === 'charge') {
+      const w = z.radius * 2.6;
+      canvas.save();
+      canvas.translate(z.x, z.y);
+      canvas.rotate((a.angle * 180) / Math.PI, 0, 0);
+      canvas.drawRect(Skia.XYWHRect(0, -w / 2, CHARGE_LENGTH, w), area);
+      canvas.drawRect(Skia.XYWHRect(0, -w / 2, CHARGE_LENGTH * k, w), core);
+      canvas.drawRect(Skia.XYWHRect(0, -w / 2, CHARGE_LENGTH, w), edge);
+      canvas.restore();
+    } else if (a.kind === 'slam') {
+      const r = slamRadius(z);
+      canvas.drawOval(Skia.XYWHRect(z.x - r, z.y - r * 0.6, r * 2, r * 1.2), area);
+      canvas.drawOval(Skia.XYWHRect(z.x - r * k, z.y - r * 0.6 * k, r * 2 * k, r * 1.2 * k), core);
+      canvas.drawOval(Skia.XYWHRect(z.x - r, z.y - r * 0.6, r * 2, r * 1.2), edge);
+    } else if (a.kind === 'spit') {
+      for (let i = -1; i <= 1; i++) {
+        const ang = a.angle + i * 0.22;
+        canvas.drawLine(z.x, z.y, z.x + Math.cos(ang) * 320, z.y + Math.sin(ang) * 320, stroke('rgba(140,220,90,0.6)', 6));
+      }
+    } else {
+      canvas.drawCircle(z.x, z.y, 60 + k * 40, stroke('rgba(199,125,255,0.8)', 4));
+    }
+  }
+
   // Ombres + liste triée en profondeur
   const drawables: Drawable[] = [];
   for (const tr of state.trees) {
@@ -496,7 +529,16 @@ export function drawWorld(
   for (const n of state.novas) {
     const k = 1 - n.life / n.maxLife;
     const r = n.radius * (0.3 + 0.7 * k);
-    const color = n.kind === 'frost' ? 'rgba(170,225,255,0.8)' : n.kind === 'howl' ? 'rgba(255,255,255,0.7)' : 'rgba(255,150,40,0.8)';
+    const color =
+      n.kind === 'frost'
+        ? 'rgba(170,225,255,0.8)'
+        : n.kind === 'howl'
+          ? 'rgba(255,255,255,0.7)'
+          : n.kind === 'slam'
+            ? 'rgba(255,60,60,0.85)'
+            : n.kind === 'summon'
+              ? 'rgba(199,125,255,0.85)'
+              : 'rgba(255,150,40,0.8)';
     const paint = stroke(color, 8 * (1 - k) + 2);
     canvas.drawOval(Skia.XYWHRect(n.x - r, n.y - r * 0.6, r * 2, r * 1.2), paint);
     if (n.kind === 'frost') canvas.drawOval(Skia.XYWHRect(n.x - r, n.y - r * 0.6, r * 2, r * 1.2), fill('rgba(170,225,255,0.15)'));
@@ -549,6 +591,14 @@ export function drawWorld(
     }
     glow.setAlphaf(1);
     core.setAlphaf(1);
+  }
+
+  // Crachats ennemis
+  for (const s of state.enemyShots) {
+    const r = s.big ? 11 : 7;
+    canvas.drawCircle(s.x, s.y, r + 3, fill(C.outline));
+    canvas.drawCircle(s.x, s.y, r, fill('#8FD14F'));
+    canvas.drawCircle(s.x - r * 0.3, s.y - r * 0.3, r * 0.35, fill('rgba(255,255,255,0.6)'));
   }
 
   // Flèches et boulets (l'apparence suit la phase de l'atout)

@@ -10,6 +10,8 @@ interface Props {
   cards: CardId[];
   levels: number[];
   ownedCount: number;
+  rerolls: number;
+  onReroll: () => void;
   onPick: (card: CardId) => void;
 }
 
@@ -71,7 +73,7 @@ function Card({ card, current, index, onPick }: { card: CardId; current: number;
   );
 }
 
-export function LevelUp({ level, cards, levels, ownedCount, onPick }: Props) {
+export function LevelUp({ level, cards, levels, ownedCount, rerolls, onReroll, onPick }: Props) {
   return (
     <Animated.View entering={FadeIn.duration(200)} style={styles.backdrop}>
       <Animated.Text entering={ZoomIn.springify().damping(10)} style={styles.title}>
@@ -85,6 +87,11 @@ export function LevelUp({ level, cards, levels, ownedCount, onPick }: Props) {
           <Card key={`${card}-${i}`} card={card} current={levels[i] ?? 0} index={i} onPick={() => onPick(card)} />
         ))}
       </View>
+      {rerolls > 0 && (
+        <Pressable onPress={onReroll} accessibilityRole="button" style={({ pressed }) => [styles.reroll, pressed && styles.pressed]}>
+          <Text style={styles.rerollText}>🎲 {t('card.reroll', { n: rerolls })}</Text>
+        </Pressable>
+      )}
     </Animated.View>
   );
 }
@@ -151,4 +158,15 @@ const styles = StyleSheet.create({
   pip: { width: 22, height: 8, borderRadius: 4, backgroundColor: 'rgba(43,34,56,0.35)' },
   pipOn: { backgroundColor: '#FFD25A' },
   pipNext: { backgroundColor: '#FFFFFF' },
+  reroll: {
+    marginTop: 16,
+    backgroundColor: '#5B8DEF',
+    borderRadius: 16,
+    borderWidth: 3,
+    borderColor: '#2B2238',
+    borderBottomWidth: 7,
+    paddingVertical: 8,
+    paddingHorizontal: 22,
+  },
+  rerollText: { color: '#FFFFFF', fontFamily: FONT.bold, fontSize: 18 },
 });

@@ -65,7 +65,9 @@ function stats(kind: StructureKind, level: number, wallLevel = 1) {
 export const structureLevel = (state: GameState, slot: string) => state.structures.find((s) => s.slot === slot)?.level ?? 0;
 
 export function addStructure(state: GameState, kind: StructureKind, slot: string, x: number, y: number, level = 1) {
-  const { radius, hp } = stats(kind, level, state.wallLevel);
+  const { radius } = stats(kind, level, state.wallLevel);
+  const base = stats(kind, level, state.wallLevel).hp;
+  const hp = kind === 'house' ? Math.round(base * state.mods.houseHpMult) : base;
   const s: Structure = { id: nextId(state), kind, slot, x, y, radius, hp, maxHp: hp, level, hitFlash: 0, pop: 0, cooldown: 0 };
   state.structures.push(s);
   return s;
@@ -223,7 +225,7 @@ function complete(state: GameState, pad: Pad) {
     const house = getHouse(state);
     if (house) {
       house.level = action.level;
-      house.maxHp = house.hp = HOUSE_HP[action.level];
+      house.maxHp = house.hp = Math.round(HOUSE_HP[action.level] * state.mods.houseHpMult);
       house.pop = 0;
       spawnBurst(state, house.x, house.y, 40, 20, 'confetti', FX_COLORS.confetti, 1.4);
     }

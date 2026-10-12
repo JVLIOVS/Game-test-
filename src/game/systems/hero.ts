@@ -6,7 +6,7 @@ import {
   HERO_RESPAWN_TIME,
   HERO_SPEED,
 } from '../constants';
-import { equipStats } from '../data/equipment';
+import { equipStats, heroMaxHp } from '../data/equipment';
 import { FX_COLORS } from '../fxColors';
 import type { GameState, PlayerInput } from '../types';
 import { LAYOUT } from '../world/layout';
@@ -81,7 +81,7 @@ export function updateHeroLife(state: GameState, dt: number) {
     hero.respawnTimer -= dt;
     if (hero.respawnTimer <= 0) {
       hero.dead = false;
-      hero.hp = hero.maxHp = HERO_MAX_HP + equipStats(state).hpBonus;
+      hero.hp = hero.maxHp = heroMaxHp(state, HERO_MAX_HP);
       hero.x = state.base.x + LAYOUT.heroSpawn.x;
       hero.y = state.base.y + LAYOUT.heroSpawn.y;
       spawnBurst(state, hero.x, hero.y, 0, 10, 'dust', FX_COLORS.dust, 1);

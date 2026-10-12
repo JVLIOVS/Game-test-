@@ -7,7 +7,7 @@ import { SafeAreaProvider } from 'react-native-safe-area-context';
 import { SkiaReady } from './src/platform/SkiaReady';
 
 // Chargé à la demande : sur le web, Skia doit être prêt avant d'importer le jeu.
-const loadGame = () => require('./src/screens/GameScreen').GameScreen;
+const loadGame = () => require('./src/screens/Root').Root;
 
 export default function App() {
   const [fontsLoaded] = useFonts({ Fredoka_600SemiBold, Fredoka_700Bold });

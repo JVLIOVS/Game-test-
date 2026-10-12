@@ -19,10 +19,13 @@ export const equipStats = (state: GameState) => {
     /** Défense : part des dégâts reçus qui est bloquée. */
     block: Math.min(0.6, 0.15 * e.shield),
     /** Agilité : vitesse de course. */
-    speed: 1 + 0.07 * e.armor,
+    speed: (1 + 0.07 * e.armor) * state.mods.speedMult,
     /** Petit bonus de l'armure : points de vie en plus. */
     hpBonus: 25 * e.armor,
   };
 };
 
-export const damageMult = (state: GameState) => equipStats(state).damage;
+export const damageMult = (state: GameState) => equipStats(state).damage * state.mods.damageMult;
+
+/** Vie maximale du héros : base × progression permanente + bonus d'armure. */
+export const heroMaxHp = (state: GameState, base: number) => Math.round(base * state.mods.hpMult) + equipStats(state).hpBonus;

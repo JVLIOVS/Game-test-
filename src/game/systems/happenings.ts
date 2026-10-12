@@ -109,9 +109,15 @@ export function updateChests(state: GameState, dt: number) {
     state.chests.splice(i, 1);
     spawnBurst(state, c.x, c.y, 10, 16, 'confetti', FX_COLORS.confetti, 1.1);
     if (c.kind === 'weapon') {
-      const others = WEAPON_TYPES.filter((w) => w !== hero.weapon.type);
-      state.weaponOffer = others[Math.floor(Math.random() * others.length)];
-      state.events.push({ type: 'weaponFound' });
+      // Seules les armes débloquées (progression permanente) peuvent sortir du coffre.
+      const others = WEAPON_TYPES.filter((w) => w !== hero.weapon.type && state.mods.weapons.includes(w));
+      if (others.length) {
+        state.weaponOffer = others[Math.floor(Math.random() * others.length)];
+        state.events.push({ type: 'weaponFound' });
+      } else {
+        gain(state, 'wood', 30 + 10 * state.world, c.x, c.y - 30);
+        dropGems(state, c.x, c.y, 6, 2);
+      }
     } else {
       gain(state, 'wood', c.wood, c.x, c.y - 30);
       if (c.kind === 'crate') dropGems(state, c.x, c.y, 4, 2);

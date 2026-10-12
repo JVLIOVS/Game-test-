@@ -1,11 +1,11 @@
 import { DAY_LENGTH, MAX_ZOMBIES, NIGHT_SPAWN_SPREAD, zombieWave } from '../constants';
-import { EQUIP_ORDER, EQUIP_TIER_COLORS, equipStats } from '../data/equipment';
+import { EQUIP_ORDER, EQUIP_TIER_COLORS, heroMaxHp } from '../data/equipment';
 import { ROUNDS_PER_WORLD } from '../data/worlds';
 import { FX_COLORS } from '../fxColors';
 import type { GameState } from '../types';
 import { repairAll } from './build';
 import { spawnBurst } from './effects';
-import { spawnBoss, spawnPoint, spawnZombie } from './zombies';
+import { spawnBoss, spawnPoint, spawnZombie, threatLevel } from './zombies';
 
 const HORDE_INTERVAL = 0.9;
 import { HERO_MAX_HP } from '../constants';
@@ -17,7 +17,7 @@ function grantEquipment(state: GameState) {
   if (!slot || state.equipment[slot] >= tier) return;
   state.equipment[slot] = tier;
   const hero = state.hero;
-  const maxHp = HERO_MAX_HP + equipStats(state).hpBonus;
+  const maxHp = heroMaxHp(state, HERO_MAX_HP);
   hero.hp += maxHp - hero.maxHp;
   hero.maxHp = maxHp;
   spawnBurst(state, hero.x, hero.y, 30, 20, 'confetti', FX_COLORS.confetti, 1.3);
@@ -36,7 +36,8 @@ export function updateCycle(state: GameState, dt: number) {
     c.night++;
     state.roundInWorld++;
     c.timer = 0;
-    c.toSpawn = zombieWave(c.night, state.world).count;
+    // Plus le joueur est puissant, plus la horde est nombreuse.
+    c.toSpawn = Math.round(zombieWave(c.night, state.world).count * (1 + threatLevel(state) * 0.4));
     c.spawnTimer = 1.5;
     c.bossSpawned = false;
     // 2 à 4 directions d'invasion, de plus en plus avec les nuits.

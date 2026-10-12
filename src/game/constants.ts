@@ -33,7 +33,7 @@ export const WALL_SEGMENT_RADIUS = 34;
 export const WALL_HP = 70;
 export const HOUSE_RADIUS = 44;
 export const HOUSE_MAX_LEVEL = 4;
-export const HOUSE_HP = [0, 250, 400, 600, 850];
+export const HOUSE_HP = [0, 330, 400, 600, 850];
 export const TOWER_RADIUS = 22;
 export const TOWER_HP = 150;
 export const TOWER_RANGE = 250;
@@ -95,10 +95,10 @@ export const MAX_ZOMBIES = 220; // au-delà, les suivants attendent leur tour
 // Zombies (la nuit n renforce chaque valeur)
 /** Vague de la nuit n (comptée depuis le début) dans le monde w (0 = ferme) : chaque monde est une invasion plus massive. */
 export const zombieWave = (night: number, world: number) => ({
-  count: 22 + night * 11 + world * 18,
-  hp: Math.round((18 + night * 6) * (1 + world * 0.3)),
+  count: 8 + night * 9 + world * 22,
+  hp: Math.round((14 + night * 8 + night * night * 1.1) * (1 + world * 0.9)),
   speed: Math.min(95, 52 + night * 3),
-  damage: 7 + night + world * 2,
+  damage: 6 + Math.round(night * 2) + world * 6,
 });
 export const ZOMBIE_RADIUS = 13;
 export const ZOMBIE_AGGRO_RANGE = 150;
@@ -117,9 +117,9 @@ export const GEM_PULL_SPEED = 520;
 export const bossStats = (round: number, size: 'mini' | 'big') => {
   const k = size === 'big' ? 2.2 : 1;
   return {
-    hp: Math.round((140 + (round - 1) * 170) * k),
+    hp: Math.round((200 + (round - 1) * 260) * k),
     speed: (size === 'big' ? 38 : 44) + Math.min(20, round * 2),
-    damage: Math.round((12 + round * 4) * (size === 'big' ? 1.4 : 1)),
+    damage: Math.round((14 + round * 5) * (size === 'big' ? 1.4 : 1)),
     radius: size === 'big' ? 30 : 22,
     scale: size === 'big' ? 2.3 : 1.6,
   };

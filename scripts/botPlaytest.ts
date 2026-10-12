@@ -1,6 +1,7 @@
 // Fait jouer un robot simple pour vérifier les règles et l'équilibrage.
 // Lancer : npx tsx scripts/botPlaytest.ts
 import { createGame, step } from '../src/game/simulation';
+import { META_UPGRADES, emptyMeta, runBonuses, soulsEarned } from '../src/meta/upgrades';
 import { chooseCard } from '../src/game/systems/progression';
 import { resolveWeaponOffer } from '../src/game/systems/happenings';
 import type { GameState, PlayerInput } from '../src/game/types';
@@ -37,7 +38,14 @@ function bot(state: GameState): PlayerInput {
   return tree ? moveTo(state, tree.x, tree.y) : { moveX: 0, moveY: 0 };
 }
 
-const state = createGame();
+// META=max : toutes les améliorations permanentes achetées.
+const meta = emptyMeta();
+if (process.env.META === 'max') {
+  for (const u of META_UPGRADES) meta.upgrades[u.id] = u.maxLevel;
+  meta.weapons = ['sword', 'spear', 'hammer', 'daggers'];
+  meta.perks = ['bow', 'orbit', 'bomb', 'lightning', 'engineer', 'frost', 'poison', 'wolf'];
+}
+const state = createGame(runBonuses(meta));
 let maxZombies = 0;
 let simMs = 0;
 let steps = 0;
@@ -79,6 +87,7 @@ for (let i = 0; i < (MINUTES * 60) / DT && state.status === 'playing'; i++) {
 console.log(log.join('\n'));
 console.log('\nÉvénements :', counts);
 console.log('Perf : zombies max', maxZombies, '| simulation', (simMs / steps).toFixed(2), 'ms par image | missions', state.questsDone, '| nourriture', state.inventory.food, '| murs niv.', state.wallLevel, '| tours', state.structures.filter((s) => s.kind === 'tower').map((s) => s.level).join(','));
+console.log('Âmes gagnées :', soulsEarned({ kills: state.stats.zombiesKilled, bosses: state.bossesKilled, nights: state.cycle.night, world: state.world, quests: state.questsDone }));
 console.log('Atouts :', JSON.stringify(state.perks), '| arme', JSON.stringify(state.hero.weapon), '| unités', state.units.length, '| bois récolté', state.stats.woodGathered);
 console.log('Fin :', state.status, '| monde', state.world, '| équipement', JSON.stringify(state.equipment), '| niveau', state.hero.level, '| boss', state.bossesKilled, '| temps', state.time.toFixed(0), 's | nuits', state.cycle.night, '| zombies tués', state.stats.zombiesKilled, '| bâtiments', state.structures.length);
 

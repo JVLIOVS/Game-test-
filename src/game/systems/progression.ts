@@ -15,7 +15,7 @@ export function dropGems(state: GameState, x: number, y: number, count: number, 
 
 function addXp(state: GameState, amount: number) {
   const hero = state.hero;
-  hero.xp += amount;
+  hero.xp += amount * state.mods.xpMult;
   while (hero.xp >= xpToNext(hero.level)) {
     hero.xp -= xpToNext(hero.level);
     hero.level++;
@@ -67,4 +67,11 @@ export function chooseCard(state: GameState, card: CardId) {
   spawnBurst(state, hero.x, hero.y, 30, 14, 'confetti', FX_COLORS.confetti, 1);
   state.pendingLevelUps--;
   state.choice = null;
+}
+
+/** Relance des cartes (achetée avec la progression permanente). */
+export function rerollCards(state: GameState) {
+  if (!state.choice || state.rerolls <= 0) return;
+  state.rerolls--;
+  state.choice = drawCards(state);
 }

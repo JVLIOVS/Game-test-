@@ -15,15 +15,18 @@ import { updateChests, updateHappenings } from './systems/happenings';
 import { updateUnits } from './systems/units';
 import { updateAnimals } from './systems/animals';
 import { updateQuests } from './systems/quests';
-import type { GameState, PlayerInput } from './types';
+import type { GameState, PlayerInput, RunModifiers } from './types';
+import { DEFAULT_BONUSES } from '../meta/upgrades';
 import { LAYOUT } from './world/layout';
 import { MAP, generateMap } from './world/map';
 
-export function createGame(): GameState {
+export function createGame(mods: RunModifiers = DEFAULT_BONUSES): GameState {
   const base = { x: MAP.width / 2, y: MAP.height / 2 };
   const { trees, decor } = generateMap(MAP, base);
   const state: GameState = {
     time: 0,
+    mods,
+    rerolls: mods.rerolls,
     status: 'playing',
     map: MAP,
     base,
@@ -41,6 +44,7 @@ export function createGame(): GameState {
     perks: emptyPerks(),
     weaponTimers: { bow: 0, volley: 0, bomb: 0, meteor: 0, lightning: 0, orbitAngle: 0, deploy: 0, nova: 0, poison: 0, tick: 0 },
     hazards: [],
+    enemyShots: [],
     skyDrops: [],
     pets: [],
     turrets: [],
@@ -74,8 +78,8 @@ export function createGame(): GameState {
       swingCooldown: 0,
       swingHitDone: false,
       target: null,
-      hp: HERO_MAX_HP,
-      maxHp: HERO_MAX_HP,
+      hp: Math.round(HERO_MAX_HP * mods.hpMult),
+      maxHp: Math.round(HERO_MAX_HP * mods.hpMult),
       hurtFlash: 0,
       sinceHurt: 0,
       dead: false,
@@ -86,7 +90,7 @@ export function createGame(): GameState {
       weapon: { type: 'sword', forge: 0 },
       comboSide: 1,
     },
-    inventory: { wood: 0, stone: 0, food: 0 },
+    inventory: { wood: mods.startWood, stone: 0, food: 0 },
     cycle: { phase: 'day', timer: FIRST_DAY_LENGTH, night: 0, toSpawn: 0, spawnTimer: 0, bossSpawned: false, hordeAngles: [], darkness: 0 },
     particles: [],
     texts: [],
@@ -96,6 +100,11 @@ export function createGame(): GameState {
     stats: { zombiesKilled: 0, built: 0, bossesKilled: 0, woodGathered: 0 },
     events: [],
   };
+  // Héritage : un atout au hasard dès le départ.
+  if (mods.startingPerk) {
+    const owned = mods.perks[Math.floor(Math.random() * mods.perks.length)];
+    if (owned) state.perks[owned] = 1;
+  }
   const house = addStructure(state, 'house', 'house', base.x + LAYOUT.house.x, base.y + LAYOUT.house.y, 1);
   house.pop = 1;
   return state;

@@ -334,6 +334,8 @@ export function drawZombie(canvas: SkCanvas, z: Zombie) {
     canvas.scale(s, s);
   } else if (z.kind === 'brute') {
     canvas.scale(1.4, 1.4);
+  } else if (z.kind === 'armored') {
+    canvas.scale(1.15, 1.15);
   } else if (z.kind === 'runner') {
     canvas.scale(0.88, 0.88);
   }
@@ -363,7 +365,12 @@ export function drawZombie(canvas: SkCanvas, z: Zombie) {
       t(C.stone),
     );
   }
-  box(canvas, -12, -31, 24, 25, 9, t(shirt));
+  box(canvas, -12, -31, 24, 25, 9, t(z.kind === 'spitter' ? '#6E9A3A' : shirt));
+  if (z.kind === 'armored') {
+    // Plastron et casque de métal
+    box(canvas, -11, -30, 22, 16, 5, t('#9AA6B2'));
+    canvas.drawRect(rect(-1, -30, 2, 16), fill(t('#6E7A86')));
+  }
   canvas.drawRect(rect(-12, -12, 7, 6), fill(t(skin)));
   canvas.drawRect(rect(3, -10, 6, 4), fill(t(skin)));
 
@@ -375,7 +382,18 @@ export function drawZombie(canvas: SkCanvas, z: Zombie) {
   canvas.drawCircle(7, -43.5, z.kind === 'runner' ? 2.8 : 2.2, fill(eye));
   canvas.drawCircle(13.5, -42.5, z.kind === 'runner' ? 2.3 : 1.8, fill(eye));
   canvas.drawRRect(rrect(3, -36, 10, 3, 1.5), fill(C.outline));
-  drawZombieGear(canvas, t);
+  if (z.kind === 'armored') {
+    canvas.drawRRect(rrect(-15, -61, 32, 15, 7), fill(C.outline));
+    canvas.drawRRect(rrect(-13, -59, 28, 12, 5), fill(t('#9AA6B2')));
+    canvas.drawRect(rect(4, -50, 12, 3), fill(C.outline));
+  } else if (z.kind === 'spitter') {
+    // Gorge gonflée, bouche ouverte
+    canvas.drawCircle(9, -32, 7, fill(C.outline));
+    canvas.drawCircle(9, -32, 5.5, fill(t('#B6E36A')));
+    canvas.drawCircle(13, -36, 3, fill(C.outline));
+  } else {
+    drawZombieGear(canvas, t);
+  }
 
   // Bras tendus vers l'avant
   const reach = 6 + z.lunge * 8;

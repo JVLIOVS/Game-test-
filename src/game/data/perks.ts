@@ -48,7 +48,7 @@ export const starRate = (level: number) => 1 + 0.08 * perkStars(level);
 
 /** Tire 3 cartes au hasard parmi les atouts disponibles. */
 export function drawCards(state: GameState, count = 3): CardId[] {
-  const pool = PERK_IDS.filter((id) => canTake(state, id));
+  const pool = PERK_IDS.filter((id) => state.mods.perks.includes(id) && canTake(state, id));
   for (let i = pool.length - 1; i > 0; i--) {
     const j = Math.floor(Math.random() * (i + 1));
     [pool[i], pool[j]] = [pool[j], pool[i]];

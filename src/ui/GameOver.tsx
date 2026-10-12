@@ -8,10 +8,12 @@ interface Props {
   zombies: number;
   bosses: number;
   level: number;
+  souls: number;
   onRetry: () => void;
+  onMenu: () => void;
 }
 
-export function GameOver({ nights, zombies, bosses, level, onRetry }: Props) {
+export function GameOver({ nights, zombies, bosses, level, souls, onRetry, onMenu }: Props) {
   return (
     <Animated.View entering={FadeIn.duration(400)} style={styles.backdrop}>
       <Animated.View entering={ZoomIn.delay(250).springify().damping(13)} style={styles.card}>
@@ -22,6 +24,16 @@ export function GameOver({ nights, zombies, bosses, level, onRetry }: Props) {
           <Text style={styles.stat}>{t('gameover.bosses', { n: bosses })}</Text>
           <Text style={styles.stat}>{t('gameover.level', { n: level })}</Text>
         </View>
+        <Animated.Text entering={ZoomIn.delay(700).springify().damping(9)} style={styles.souls}>
+          💜 {t('gameover.souls', { n: souls })}
+        </Animated.Text>
+        <Pressable
+          onPress={onMenu}
+          accessibilityRole="button"
+          style={({ pressed }) => [styles.button, styles.buttonSouls, pressed && styles.buttonPressed]}
+        >
+          <Text style={styles.buttonText}>{t('gameover.menu')}</Text>
+        </Pressable>
         <Pressable
           onPress={onRetry}
           accessibilityRole="button"
@@ -71,4 +83,6 @@ const styles = StyleSheet.create({
   },
   buttonPressed: { transform: [{ translateY: 3 }], borderBottomWidth: 5 },
   buttonText: { fontSize: 22, color: '#2B2238', fontFamily: FONT.bold },
+  buttonSouls: { backgroundColor: '#C77DFF' },
+  souls: { fontSize: 30, color: '#E6C8FF', fontFamily: FONT.bold, textShadowColor: '#2B2238', textShadowRadius: 5 },
 });

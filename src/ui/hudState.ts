@@ -42,6 +42,7 @@ export interface HudState {
   forge: number;
   /** Arme proposée par un coffre ("" si aucune). */
   weaponOffer: string;
+  rerolls: number;
 }
 
 export function readHud(state: GameState): HudState {
@@ -82,6 +83,7 @@ export function readHud(state: GameState): HudState {
     weaponType: state.hero.weapon.type,
     forge: state.hero.weapon.forge,
     weaponOffer: state.weaponOffer ?? '',
+    rerolls: state.rerolls,
   };
 }
 

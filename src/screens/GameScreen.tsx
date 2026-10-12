@@ -3,9 +3,10 @@ import { useCallback, useEffect, useRef, useState } from 'react';
 import { Platform, StyleSheet, View, useWindowDimensions, type GestureResponderEvent } from 'react-native';
 import { useSharedValue } from 'react-native-reanimated';
 import { createGame, step } from '../game/simulation';
-import { chooseCard } from '../game/systems/progression';
+import { chooseCard, rerollCards } from '../game/systems/progression';
+import type { RunResult } from '../meta/useMeta';
 import { resolveWeaponOffer } from '../game/systems/happenings';
-import type { CardId, GameEvent, WeaponType } from '../game/types';
+import type { CardId, GameEvent, RunModifiers, WeaponType } from '../game/types';
 import { worldDef } from '../game/data/worlds';
 import { t, type TranslationKey } from '../i18n';
 import { createJoystick, joystickEnd, joystickMove, joystickStart, readInput } from '../input/joystick';
@@ -32,13 +33,22 @@ function emptyPicture(): SkPicture {
 
 type HintKey = 'hint.move' | 'hint.chop' | 'hint.build' | null;
 
-export function GameScreen() {
+interface Props {
+  mods: RunModifiers;
+  /** Fin de partie : enregistre la partie et renvoie les âmes gagnées. */
+  onGameOver: (r: RunResult) => number;
+  onRetry: () => void;
+  onMenu: () => void;
+}
+
+export function GameScreen({ mods, onGameOver, onRetry, onMenu }: Props) {
   const { width, height } = useWindowDimensions();
   const fontBig = useFont(FONT_FILE, 22);
   const fontSmall = useFont(FONT_FILE, 15);
   const picture = useSharedValue<SkPicture>(emptyPicture());
 
-  const gameRef = useRef(applyDebugHash(createGame()));
+  const gameRef = useRef(applyDebugHash(createGame(mods)));
+  const [soulsWon, setSoulsWon] = useState<number | null>(null);
   const joystick = useRef(createJoystick()).current;
   const keys = useRef(new Set<string>()).current;
 
@@ -277,12 +287,24 @@ export function GameScreen() {
     [joystick],
   );
 
-  const restart = useCallback(() => {
-    gameRef.current = createGame();
-    bannerQueue.current = [];
-    if (bannerTimer.current) clearTimeout(bannerTimer.current);
-    bannerTimer.current = null;
-    setBanner(null);
+  // Fin de partie : on enregistre une seule fois les âmes gagnées.
+  useEffect(() => {
+    if (hud.status !== 'gameover' || soulsWon !== null) return;
+    const g = gameRef.current;
+    setSoulsWon(
+      onGameOver({
+        kills: g.stats.zombiesKilled,
+        bosses: g.bossesKilled,
+        nights: hud.nightsSurvived,
+        world: g.world,
+        quests: g.questsDone,
+      }),
+    );
+  }, [hud.status, hud.nightsSurvived, soulsWon, onGameOver]);
+
+  const reroll = useCallback(() => {
+    rerollCards(gameRef.current);
+    setHud(readHud(gameRef.current));
   }, []);
 
   const onStart = (e: GestureResponderEvent) => joystickStart(joystick, e.nativeEvent.pageX, e.nativeEvent.pageY);
@@ -324,6 +346,8 @@ export function GameScreen() {
           cards={hud.choice.split(',') as CardId[]}
           levels={hud.choiceLevels.split(',').map(Number)}
           ownedCount={hud.slots ? hud.slots.split(',').length : 0}
+          rerolls={hud.rerolls}
+          onReroll={reroll}
           onPick={pickCard}
         />
       )}
@@ -333,7 +357,9 @@ export function GameScreen() {
           zombies={hud.zombiesKilled}
           bosses={hud.bossesKilled}
           level={hud.level}
-          onRetry={restart}
+          souls={soulsWon ?? 0}
+          onRetry={onRetry}
+          onMenu={onMenu}
         />
       )}
     </View>

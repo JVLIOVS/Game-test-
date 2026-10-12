@@ -225,8 +225,10 @@ export interface Zombie {
   unitTargetId: number | null;
   /** Zombie d'embuscade : il chasse le héros au lieu d'attaquer la base. */
   hunter: boolean;
-  /** Marcheur, coureur (rapide et fragile) ou brute (lente et costaude). */
+  /** Marcheur, coureur (rapide et fragile), brute (lente et costaude), blindé, cracheur (à distance). */
   kind: ZombieKind;
+  /** Attaques spéciales (boss uniquement). */
+  ability: BossAbility | null;
   /** Ralentissement (aura de givre), 0..1. */
   slow: number;
   /** Dégâts de poison restants par seconde, et durée. */
@@ -330,7 +332,7 @@ export interface Nova {
   radius: number;
   life: number;
   maxLife: number;
-  kind: 'frost' | 'howl' | 'meteor';
+  kind: 'frost' | 'howl' | 'meteor' | 'slam' | 'summon';
 }
 
 /** Gemme d'expérience laissée par un zombie. */
@@ -346,7 +348,29 @@ export interface Gem {
 
 export type PerkId = 'bow' | 'orbit' | 'bomb' | 'lightning' | 'engineer' | 'frost' | 'poison' | 'wolf';
 
-export type ZombieKind = 'walker' | 'runner' | 'brute';
+export type ZombieKind = 'walker' | 'runner' | 'brute' | 'armored' | 'spitter';
+
+/** Attaque spéciale d'un boss, annoncée au sol avant de frapper. */
+export interface BossAbility {
+  state: 'walk' | 'windup' | 'charge' | 'recover';
+  kind: 'charge' | 'slam' | 'summon' | 'spit';
+  timer: number;
+  cooldown: number;
+  angle: number;
+  /** Ce que la charge a déjà touché (pour ne frapper qu'une fois). */
+  hitIds: number[];
+}
+
+/** Projectile ennemi (crachat) : blesse le héros ou les bâtiments. */
+export interface EnemyShot {
+  x: number;
+  y: number;
+  vx: number;
+  vy: number;
+  life: number;
+  damage: number;
+  big: boolean;
+}
 
 export type EquipSlot = 'sword' | 'shield' | 'armor';
 
@@ -453,11 +477,29 @@ export type GameEvent =
   | { type: 'unitSpawned'; kind: Unit['kind'] }
   | { type: 'crit' }
   | { type: 'animalKilled' }
+  | { type: 'bossTelegraph' }
   | { type: 'questDone'; kind: QuestKind }
   | { type: 'worldAdvance'; world: number };
 
+/** Bonus de la progression permanente, fixés au début de la partie. */
+export interface RunModifiers {
+  hpMult: number;
+  damageMult: number;
+  speedMult: number;
+  xpMult: number;
+  startWood: number;
+  houseHpMult: number;
+  rerolls: number;
+  startingPerk: boolean;
+  weapons: WeaponType[];
+  perks: PerkId[];
+}
+
 export interface GameState {
   time: number;
+  mods: RunModifiers;
+  /** Relances de cartes restantes. */
+  rerolls: number;
   status: 'playing' | 'gameover';
   map: MapDef;
   /** Centre de la base (position de la baraque). */
@@ -489,6 +531,7 @@ export interface GameState {
     tick: number;
   };
   hazards: Hazard[];
+  enemyShots: EnemyShot[];
   skyDrops: SkyDrop[];
   pets: Pet[];
   turrets: Turret[];

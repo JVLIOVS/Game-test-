@@ -17,6 +17,10 @@ Une seule carte, ta base au centre, la forêt autour.
 **Atouts** : tuer des zombies laisse des gemmes d'XP. À chaque niveau, le jeu se met en pause et propose 3 cartes tirées au sort parmi 8 atouts : arc, haches tournoyantes, bombes, éclair, ingénieur, givre, poison, loups.
 On peut en posséder **5**. Chaque atout a **3 phases** qui le transforment (ex. arc → flèches de feu → pluie de flèches ; bombe → bombe incendiaire → météore ; éclair → chaîne → nuage d'orage ; loups → meute avec un alpha), puis monte sans fin en **étoiles** (★).
 
+**Progression permanente** : chaque partie rapporte des **âmes** (zombies, boss, nuits, mondes, missions). À l'accueil, elles achètent des améliorations définitives (vitalité, puissance, agilité, sagesse, réserves, fondations, relances de cartes, héritage) et débloquent les armes (lance, marteau, dagues) et les atouts (givre, poison, loups). Sauvegarde sur le téléphone (`src/meta/storage.ts`, prête pour Supabase).
+
+**Difficulté** : la difficulté suit la puissance du joueur (tours, atouts, forge, niveau, remparts, soldats) : on ne peut plus survoler la partie. Les boss annoncent leurs attaques au sol (charge, coup au sol, invocation, crachats). Nouveaux zombies : blindés et cracheurs (à distance).
+
 **Invasion** : chaque nuit, des hordes arrivent de 2 à 4 directions (jusqu'à plus de 100 zombies à l'écran) : marcheurs, coureurs rapides, brutes qui renversent les arbres.
 
 **Défenses** : tours en 3 niveaux (archer en bois → tour de pierre à baliste → tour de cristal), palissade en 3 niveaux (pieux → mur de pierre → rempart à pointes), pièges à pointes, catapultes.
@@ -49,6 +53,10 @@ Tester dans un navigateur, en ajoutant à l'adresse : `#riche` (200 bois), `#nui
 | 3b | 5 atouts / 3 emplacements / 3 phases visibles, 4 mondes (mini-boss, mini-boss, gros boss), épée, bouclier, armure | ✅ |
 | 3c | Étoiles d'atouts sans fin, 4 armes principales + forge, caserne et bûcherons, micro-événements, carte agrandie | ✅ |
 | 3d | Invasion massive, défenses en 3 niveaux, pièges, catapultes, nourriture et chasse, 8 atouts / 5 emplacements qui se transforment, missions | ✅ |
+| R1 | Refonte étape 1 : difficulté adaptative, boss à attaques annoncées, progression permanente (âmes, améliorations, déblocages), écran d'accueil | ✅ |
+| R2 | Grande carte, territoires à libérer, survivants | |
+| R3 | Lignées d'armes avec évolution finale, missions liées aux territoires | |
+| R4 | Vrais graphismes (packs Kenney) et animations des pouvoirs | |
 | 4 | Micro-objectifs, XP de compte, skins et atouts à débloquer (avec sauvegarde) | Expo Go |
 | 5 | Pierre et nourriture, faim, nouveaux emplacements (ferme, entrepôt) | Expo Go |
 | 6 | Missions quotidiennes, récompense de connexion | Expo Go |
