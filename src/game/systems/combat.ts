@@ -17,6 +17,8 @@ import { dist, gain, nextId } from './common';
 import { addTrauma, spawnBurst, spawnText } from './effects';
 import { dropGems } from './progression';
 import { hitTree } from './trees';
+import { onZombieDeath } from './weapons';
+import { hitAnimal } from './animals';
 
 export function damageZombie(state: GameState, z: Zombie, amount: number, fromX: number, fromY: number, knockback = 260, crit = false) {
   z.hp -= amount;
@@ -25,13 +27,15 @@ export function damageZombie(state: GameState, z: Zombie, amount: number, fromX:
   const knock = z.boss ? knockback * 0.15 : knockback;
   z.vx += ((z.x - fromX) / d) * knock;
   z.vy += ((z.y - fromY) / d) * knock;
-  spawnText(state, z.x, z.y - (z.boss ? 80 : 40), crit ? `${amount}!` : `${amount}`, crit ? FX_COLORS.textCrit : z.boss ? FX_COLORS.textBoss : FX_COLORS.textDamage, { size: crit ? 1.35 : 1 });
+  if (knockback > 0 || crit || amount >= 10) spawnText(state, z.x, z.y - (z.boss ? 80 : 40), crit ? `${amount}!` : `${amount}`, crit ? FX_COLORS.textCrit : z.boss ? FX_COLORS.textBoss : FX_COLORS.textDamage, { size: crit ? 1.35 : 1 });
   spawnBurst(state, z.x, z.y, 20, 5, 'goo', FX_COLORS.goo, 0.8);
   state.events.push({ type: 'zombieHit' });
   if (z.hp > 0) return;
 
   const i = state.zombies.indexOf(z);
-  if (i >= 0) state.zombies.splice(i, 1);
+  if (i < 0) return;
+  state.zombies.splice(i, 1);
+  onZombieDeath(state, z);
   state.stats.zombiesKilled++;
   if (z.boss) {
     const round = state.cycle.night;
@@ -133,7 +137,7 @@ export function updateHeroActions(state: GameState, dt: number) {
   const hero = state.hero;
   if (hero.dead) return;
   hero.swingCooldown = Math.max(0, hero.swingCooldown - dt);
-  const fighting = hero.target?.kind === 'zombie';
+  const fighting = hero.target?.kind === 'zombie' || hero.target?.kind === 'animal';
   const speed = fighting ? WEAPONS[hero.weapon.type].speed : AXE_SPEED[hero.axeLevel];
 
   if (hero.swingTime > 0) {
@@ -148,6 +152,9 @@ export function updateHeroActions(state: GameState, dt: number) {
       } else if (target?.kind === 'tree') {
         const tree = state.trees.find((t) => t.id === target.id);
         if (tree && tree.state === 'standing') hitTree(state, tree);
+      } else if (target?.kind === 'animal') {
+        const a = state.animals.find((an) => an.id === target.id);
+        if (a && dist(hero.x, hero.y, a.x, a.y) < hero.radius + 50) hitAnimal(state, a, true);
       }
     }
     if (hero.swingTime >= SWING_DURATION) {
@@ -160,13 +167,22 @@ export function updateHeroActions(state: GameState, dt: number) {
   if (hero.swingCooldown > 0) return;
 
   const reach = WEAPONS[hero.weapon.type].reach;
-  let best: { kind: 'tree' | 'zombie'; id: number; x: number } | null = null;
+  let best: { kind: 'tree' | 'zombie' | 'animal'; id: number; x: number } | null = null;
   let bestDist = Infinity;
   for (const z of state.zombies) {
     const d = dist(hero.x, hero.y, z.x, z.y) - z.radius - hero.radius;
     if (d < reach && d < bestDist) {
       best = { kind: 'zombie', id: z.id, x: z.x };
       bestDist = d;
+    }
+  }
+  if (!best) {
+    for (const a of state.animals) {
+      const d = dist(hero.x, hero.y, a.x, a.y) - hero.radius;
+      if (d < 34 && d < bestDist) {
+        best = { kind: 'animal', id: a.id, x: a.x };
+        bestDist = d;
+      }
     }
   }
   if (!best) {

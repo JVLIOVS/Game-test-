@@ -26,7 +26,7 @@ export const TREE_REGROW_TIME = 25;
 export const TREE_GROW_TIME = 0.6;
 
 // Base
-export const BASE_CLEARING = 440; // pas d'arbre autour de la base
+export const BASE_CLEARING = 480; // pas d'arbre autour de la base
 export const WALL_RING_RADIUS = 240;
 export const WALL_SEGMENTS_PER_SIDE = 5;
 export const WALL_SEGMENT_RADIUS = 34;
@@ -51,7 +51,32 @@ export const COST = {
   workshop: 15,
   barracks: [0, 30, 60, 110],
   lumber: [0, 20, 45, 90],
+  lodge: [0, 25, 50, 90],
+  trap: 15,
+  catapult: 45,
 };
+/** Nourriture demandée par les grosses améliorations (index = niveau visé). */
+export const FOOD_COST = {
+  house: [0, 0, 0, 20, 45],
+  barracks: [0, 0, 15, 35],
+  lumber: [0, 0, 0, 20],
+  lodge: [0, 0, 0, 0],
+  tower: [0, 0, 15, 35],
+  walls: [0, 0, 20, 50],
+};
+export const TOWER_UPGRADE_COST = [0, 0, 40, 80];
+export const WALL_UPGRADE_COST = [0, 0, 60, 120];
+export const WALL_HP_BY_LEVEL = [0, 70, 170, 320];
+export const TOWER_HP_BY_LEVEL = [0, 150, 260, 400];
+export const TRAP_RADIUS = 42;
+export const TRAP_DPS = 16;
+export const CATAPULT_RADIUS = 26;
+export const CATAPULT_HP = 180;
+export const CATAPULT_RANGE = 520;
+export const CATAPULT_INTERVAL = 3.2;
+export const CATAPULT_DAMAGE = 40;
+export const LODGE_RADIUS = 30;
+export const LODGE_HP = 160;
 export const BARRACKS_RADIUS = 30;
 export const BARRACKS_HP = 200;
 export const LUMBER_RADIUS = 30;
@@ -64,13 +89,14 @@ export const PAD_FEED_INTERVAL = 0.06; // une bûche toutes les 60 ms
 // Cycle jour / nuit
 export const FIRST_DAY_LENGTH = 55;
 export const DAY_LENGTH = 40;
-export const NIGHT_SPAWN_SPREAD = 12; // les zombies arrivent sur 12 s
+export const NIGHT_SPAWN_SPREAD = 16; // les hordes arrivent sur 16 s
+export const MAX_ZOMBIES = 220; // au-delà, les suivants attendent leur tour
 
 // Zombies (la nuit n renforce chaque valeur)
 /** Vague de la nuit n (comptée depuis le début) dans le monde w (0 = ferme) : chaque monde est une invasion plus massive. */
 export const zombieWave = (night: number, world: number) => ({
-  count: 4 + night * 3 + world * 5,
-  hp: Math.round((26 + night * 9) * (1 + world * 0.3)),
+  count: 22 + night * 11 + world * 18,
+  hp: Math.round((18 + night * 6) * (1 + world * 0.3)),
   speed: Math.min(95, 52 + night * 3),
   damage: 7 + night + world * 2,
 });
@@ -83,7 +109,7 @@ export const GRAVITY = 900;
 export const MAX_PARTICLES = 260;
 
 // Progression pendant la partie (XP → niveaux → cartes)
-export const xpToNext = (level: number) => 4 + level * 3;
+export const xpToNext = (level: number) => 6 + level * 5;
 export const GEM_PICKUP_RADIUS = 18;
 export const GEM_PULL_SPEED = 520;
 

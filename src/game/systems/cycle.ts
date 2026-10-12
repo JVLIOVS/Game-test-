@@ -1,11 +1,13 @@
-import { DAY_LENGTH, NIGHT_SPAWN_SPREAD, zombieWave } from '../constants';
+import { DAY_LENGTH, MAX_ZOMBIES, NIGHT_SPAWN_SPREAD, zombieWave } from '../constants';
 import { EQUIP_ORDER, EQUIP_TIER_COLORS, equipStats } from '../data/equipment';
 import { ROUNDS_PER_WORLD } from '../data/worlds';
 import { FX_COLORS } from '../fxColors';
 import type { GameState } from '../types';
 import { repairAll } from './build';
 import { spawnBurst } from './effects';
-import { spawnBoss, spawnZombie } from './zombies';
+import { spawnBoss, spawnPoint, spawnZombie } from './zombies';
+
+const HORDE_INTERVAL = 0.9;
 import { HERO_MAX_HP } from '../constants';
 
 /** Récompense de manche : l'épée, le bouclier puis l'armure du palier du monde. */
@@ -37,6 +39,10 @@ export function updateCycle(state: GameState, dt: number) {
     c.toSpawn = zombieWave(c.night, state.world).count;
     c.spawnTimer = 1.5;
     c.bossSpawned = false;
+    // 2 à 4 directions d'invasion, de plus en plus avec les nuits.
+    const dirs = Math.min(4, 2 + Math.floor(c.night / 3));
+    const start = Math.random() * Math.PI * 2;
+    c.hordeAngles = Array.from({ length: dirs }, (_, i) => start + (i / dirs) * Math.PI * 2 + (Math.random() - 0.5) * 0.6);
     state.events.push({ type: 'nightStart', night: c.night });
     return;
   }
@@ -44,10 +50,18 @@ export function updateCycle(state: GameState, dt: number) {
   c.timer += dt;
   if (c.toSpawn > 0) {
     c.spawnTimer -= dt;
-    if (c.spawnTimer <= 0) {
-      spawnZombie(state, c.night);
-      c.toSpawn--;
-      c.spawnTimer = NIGHT_SPAWN_SPREAD / zombieWave(c.night, state.world).count;
+    if (c.spawnTimer <= 0 && state.zombies.length < MAX_ZOMBIES) {
+      // Une horde sort d'une des directions d'invasion.
+      const total = zombieWave(c.night, state.world).count;
+      const groups = Math.max(1, Math.round(NIGHT_SPAWN_SPREAD / HORDE_INTERVAL));
+      const size = Math.min(c.toSpawn, Math.max(2, Math.ceil(total / groups)));
+      const angle = c.hordeAngles[Math.floor(Math.random() * c.hordeAngles.length)] ?? Math.random() * Math.PI * 2;
+      const center = spawnPoint(state, angle + (Math.random() - 0.5) * 0.25);
+      for (let i = 0; i < size; i++) {
+        spawnZombie(state, c.night, { x: center.x + (Math.random() - 0.5) * 120, y: center.y + (Math.random() - 0.5) * 120 });
+      }
+      c.toSpawn -= size;
+      c.spawnTimer = HORDE_INTERVAL;
     }
   } else if (!c.bossSpawned) {
     // Fin de vague : mini-boss aux manches 1 et 2, gros boss à la manche 3.

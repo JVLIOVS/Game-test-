@@ -12,7 +12,7 @@ export function gain(state: GameState, resource: ResourceId, amount: number, x: 
   state.inventory[resource] += amount;
   if (resource === 'wood') state.stats.woodGathered += amount;
   state.events.push({ type: 'resourceGained', resource, amount });
-  spawnText(state, x, y, `+${amount}`, FX_COLORS.textWood, { log: resource === 'wood' });
+  spawnText(state, x, y, `+${amount}`, resource === 'food' ? FX_COLORS.textFood : FX_COLORS.textWood, { log: resource === 'wood' });
 }
 
 /** Repousse un cercle mobile hors d'un cercle fixe. Renvoie true s'il y avait contact. */

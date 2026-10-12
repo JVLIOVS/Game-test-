@@ -7,6 +7,9 @@ import { getHouse } from '../game/systems/build';
 /** Ce que l'interface React affiche. Recalculé à chaque image, transmis seulement s'il change. */
 export interface HudState {
   wood: number;
+  food: number;
+  /** Missions : "kind:progress:target|..." */
+  quests: string;
   heroHp: number;
   heroDead: boolean;
   respawnIn: number;
@@ -47,6 +50,8 @@ export function readHud(state: GameState): HudState {
   const boss = state.zombies.find((z) => z.boss);
   return {
     wood: state.inventory.wood,
+    food: state.inventory.food,
+    quests: state.quests.map((q) => `${q.kind}:${Math.min(q.progress, q.target)}:${q.target}`).join('|'),
     heroHp: Math.round((state.hero.hp / state.hero.maxHp) * 50) / 50,
     heroDead: state.hero.dead,
     respawnIn: Math.ceil(state.hero.respawnTimer),

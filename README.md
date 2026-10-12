@@ -14,8 +14,16 @@ Une seule carte, ta base au centre, la forêt autour.
 - **Fin de partie** : si la baraque tombe. Écran de bilan et bouton « Rejouer ».
 - Particules, secousses d'écran, vibrations, chiffres de dégâts, annonces animées, textes FR / EN.
 
-**Atouts** : tuer des zombies laisse des gemmes d'XP. À chaque niveau, le jeu se met en pause et propose 3 cartes tirées au sort parmi 5 atouts : arc, haches tournoyantes, bombes, éclair, ingénieur (tourelles).
-On ne peut posséder que **3 atouts**. Chaque atout a **3 phases** visibles en jeu (ex. arc → arc de feu → arc de glace), puis monte sans fin en **étoiles** (★) : il y a toujours une carte utile.
+**Atouts** : tuer des zombies laisse des gemmes d'XP. À chaque niveau, le jeu se met en pause et propose 3 cartes tirées au sort parmi 8 atouts : arc, haches tournoyantes, bombes, éclair, ingénieur, givre, poison, loups.
+On peut en posséder **5**. Chaque atout a **3 phases** qui le transforment (ex. arc → flèches de feu → pluie de flèches ; bombe → bombe incendiaire → météore ; éclair → chaîne → nuage d'orage ; loups → meute avec un alpha), puis monte sans fin en **étoiles** (★).
+
+**Invasion** : chaque nuit, des hordes arrivent de 2 à 4 directions (jusqu'à plus de 100 zombies à l'écran) : marcheurs, coureurs rapides, brutes qui renversent les arbres.
+
+**Défenses** : tours en 3 niveaux (archer en bois → tour de pierre à baliste → tour de cristal), palissade en 3 niveaux (pieux → mur de pierre → rempart à pointes), pièges à pointes, catapultes.
+
+**Nourriture** : des animaux vivent dans la forêt (lapins, cerfs, sangliers). Le héros les chasse, et le **pavillon de chasse** produit des chasseurs. La nourriture paie les grosses améliorations.
+
+**Missions** : 3 objectifs en cours (abattre, couper, chasser, construire, ramasser, battre un boss), récompensés en bois, nourriture et XP.
 
 **Arme principale** : épée (arc large), lance (transperce une ligne), marteau (onde de choc), dagues (rapides, critiques). Les coffres d'arme (zombie doré) proposent d'en changer. La **forge** l'améliore avec du bois, sans limite.
 
@@ -27,7 +35,7 @@ On ne peut posséder que **3 atouts**. Chaque atout a **3 phases** visibles en j
 
 **Équipement** : chaque manche gagnée donne une pièce du palier du monde (bois, fer, or, plasma) : épée (puissance), bouclier (défense), armure (agilité et vie). Visible sur le héros.
 
-Tester dans un navigateur, en ajoutant à l'adresse : `#riche` (200 bois), `#nuit`, `#cartes` (un choix d'atout), `#boss`, `#armes` (3 atouts), `#monde2` à `#monde4`, `#equipement`, `#camp`, `#coffre`, `#evenement`. Combinables : `#monde3-equipement-boss-armes`.
+Tester dans un navigateur, en ajoutant à l'adresse : `#riche` (200 bois), `#nuit`, `#cartes` (un choix d'atout), `#boss`, `#armes` (3 atouts), `#monde2` à `#monde4`, `#equipement`, `#camp`, `#coffre`, `#evenement`, `#phase3`, `#defense`. Combinables : `#monde3-equipement-boss-armes`.
 
 `npm run playtest` fait jouer un robot dans la simulation et affiche le déroulé (utile pour l'équilibrage).
 
@@ -40,6 +48,7 @@ Tester dans un navigateur, en ajoutant à l'adresse : `#riche` (200 bois), `#nui
 | 3 | XP, cartes d'atouts, boss de fin de manche | ✅ |
 | 3b | 5 atouts / 3 emplacements / 3 phases visibles, 4 mondes (mini-boss, mini-boss, gros boss), épée, bouclier, armure | ✅ |
 | 3c | Étoiles d'atouts sans fin, 4 armes principales + forge, caserne et bûcherons, micro-événements, carte agrandie | ✅ |
+| 3d | Invasion massive, défenses en 3 niveaux, pièges, catapultes, nourriture et chasse, 8 atouts / 5 emplacements qui se transforment, missions | ✅ |
 | 4 | Micro-objectifs, XP de compte, skins et atouts à débloquer (avec sauvegarde) | Expo Go |
 | 5 | Pierre et nourriture, faim, nouveaux emplacements (ferme, entrepôt) | Expo Go |
 | 6 | Missions quotidiennes, récompense de connexion | Expo Go |

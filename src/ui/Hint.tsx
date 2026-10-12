@@ -6,7 +6,7 @@ import { FONT } from './fonts';
 export function Hint({ text }: { text: string | null }) {
   const insets = useSafeAreaInsets();
   return (
-    <View pointerEvents="none" style={[styles.root, { bottom: insets.bottom + 40 }]}>
+    <View pointerEvents="none" style={[styles.root, { bottom: insets.bottom + 110 }]}>
       {text && (
         <Animated.View key={text} entering={FadeIn.duration(300)} exiting={FadeOut.duration(250)} style={styles.bubble}>
           <Text style={styles.text}>{text}</Text>

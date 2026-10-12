@@ -1,4 +1,14 @@
 import {
+  CATAPULT_HP,
+  CATAPULT_RADIUS,
+  FOOD_COST,
+  LODGE_HP,
+  LODGE_RADIUS,
+  TOWER_HP_BY_LEVEL,
+  TOWER_UPGRADE_COST,
+  TRAP_RADIUS,
+  WALL_HP_BY_LEVEL,
+  WALL_UPGRADE_COST,
   BARRACKS_HP,
   BARRACKS_RADIUS,
   COST,
@@ -29,14 +39,20 @@ import { addTrauma, spawnBurst, spawnText } from './effects';
 
 const FEED_START_DELAY = 0.25;
 
-function stats(kind: StructureKind, level: number) {
+function stats(kind: StructureKind, level: number, wallLevel = 1) {
   switch (kind) {
     case 'house':
       return { radius: HOUSE_RADIUS, hp: HOUSE_HP[level] };
     case 'wall':
-      return { radius: WALL_SEGMENT_RADIUS, hp: WALL_HP };
+      return { radius: WALL_SEGMENT_RADIUS, hp: WALL_HP_BY_LEVEL[wallLevel] ?? WALL_HP };
     case 'tower':
-      return { radius: TOWER_RADIUS, hp: TOWER_HP };
+      return { radius: TOWER_RADIUS, hp: TOWER_HP_BY_LEVEL[level] ?? TOWER_HP };
+    case 'lodge':
+      return { radius: LODGE_RADIUS, hp: LODGE_HP + (level - 1) * 60 };
+    case 'trap':
+      return { radius: TRAP_RADIUS, hp: 9999 };
+    case 'catapult':
+      return { radius: CATAPULT_RADIUS, hp: CATAPULT_HP };
     case 'workshop':
       return { radius: WORKSHOP_RADIUS, hp: WORKSHOP_HP };
     case 'barracks':
@@ -49,7 +65,7 @@ function stats(kind: StructureKind, level: number) {
 export const structureLevel = (state: GameState, slot: string) => state.structures.find((s) => s.slot === slot)?.level ?? 0;
 
 export function addStructure(state: GameState, kind: StructureKind, slot: string, x: number, y: number, level = 1) {
-  const { radius, hp } = stats(kind, level);
+  const { radius, hp } = stats(kind, level, state.wallLevel);
   const s: Structure = { id: nextId(state), kind, slot, x, y, radius, hp, maxHp: hp, level, hitFlash: 0, pop: 0, cooldown: 0 };
   state.structures.push(s);
   return s;
@@ -57,7 +73,10 @@ export function addStructure(state: GameState, kind: StructureKind, slot: string
 
 export const getHouse = (state: GameState) => state.structures.find((s) => s.kind === 'house');
 
-type PadSpec = Pick<Pad, 'id' | 'x' | 'y' | 'cost' | 'action'>;
+type PadSpec = Pick<Pad, 'id' | 'x' | 'y' | 'cost' | 'action'> & { foodCost?: number };
+
+/** Les éléments qu'on traverse (pièges au sol, pieux pour le héros). */
+export const isWalkable = (s: Structure) => s.kind === 'trap';
 
 /** Nombre de tourelles autorisées : baraque niv. 2 et 3, +2 par monde, +atout Ingénieur. */
 export function towerSlots(state: GameState, houseLevel: number) {
@@ -77,7 +96,13 @@ function padSpecs(state: GameState): PadSpec[] {
 
   if (houseLevel < HOUSE_MAX_LEVEL) {
     const level = houseLevel + 1;
-    specs.push({ id: `house-${level}`, ...at(LAYOUT.houseUpgradePad), cost: COST.house[level], action: { type: 'upgradeHouse', level } });
+    specs.push({
+      id: `house-${level}`,
+      ...at(LAYOUT.houseUpgradePad),
+      cost: COST.house[level],
+      foodCost: FOOD_COST.house[level],
+      action: { type: 'upgradeHouse', level },
+    });
   }
 
   // Forge : améliore l'arme principale, sans limite (le bois sert toujours).
@@ -88,18 +113,61 @@ function padSpecs(state: GameState): PadSpec[] {
     specs.push({ id: `forge-${level}`, ...at(LAYOUT.axePad), cost: forgeCost(level), action: { type: 'forge', level } });
   }
 
-  // Caserne (soldats) et cabane de bûcherons (ouvriers) : 3 niveaux chacune.
+  // Caserne (soldats), bûcherons (bois) et pavillon de chasse (nourriture) : 3 niveaux chacun.
   const producers = [
-    { slot: 'barracks', kind: 'barracks' as const, pos: LAYOUT.barracks, up: LAYOUT.barracksUpgradePad, costs: COST.barracks },
-    { slot: 'lumber', kind: 'lumber' as const, pos: LAYOUT.lumber, up: LAYOUT.lumberUpgradePad, costs: COST.lumber },
+    { slot: 'barracks', kind: 'barracks' as const, pos: LAYOUT.barracks, up: LAYOUT.barracksUpgradePad, costs: COST.barracks, food: FOOD_COST.barracks },
+    { slot: 'lumber', kind: 'lumber' as const, pos: LAYOUT.lumber, up: LAYOUT.lumberUpgradePad, costs: COST.lumber, food: FOOD_COST.lumber },
+    { slot: 'lodge', kind: 'lodge' as const, pos: LAYOUT.lodge, up: LAYOUT.lodgeUpgradePad, costs: COST.lodge, food: FOOD_COST.lodge },
   ];
   for (const p of producers) {
     const level = structureLevel(state, p.slot);
     if (level === 0) {
       specs.push({ id: p.slot, ...at(p.pos), cost: p.costs[1], action: { type: 'build', kind: p.kind, slot: p.slot } });
     } else if (level < STRUCTURE_MAX_LEVEL) {
-      specs.push({ id: `${p.slot}-${level + 1}`, ...at(p.up), cost: p.costs[level + 1], action: { type: 'upgradeStructure', slot: p.slot, level: level + 1 } });
+      specs.push({
+        id: `${p.slot}-${level + 1}`,
+        ...at(p.up),
+        cost: p.costs[level + 1],
+        foodCost: p.food[level + 1],
+        action: { type: 'upgradeStructure', slot: p.slot, level: level + 1 },
+      });
     }
+  }
+
+  // Palissade : pieux → mur de pierre → rempart (dès qu'un côté est construit).
+  if (state.wallLevel < STRUCTURE_MAX_LEVEL && state.structures.some((s) => s.kind === 'wall')) {
+    const level = state.wallLevel + 1;
+    specs.push({
+      id: `walls-${level}`,
+      ...at(LAYOUT.wallUpgradePad),
+      cost: WALL_UPGRADE_COST[level],
+      foodCost: FOOD_COST.walls[level],
+      action: { type: 'upgradeWalls', level },
+    });
+  }
+
+  // Pièges à pointes (dès le début) et catapultes (baraque niv. 2).
+  for (const t of LAYOUT.traps) {
+    if (!has(t.slot)) specs.push({ id: t.slot, ...at(t), cost: COST.trap, action: { type: 'build', kind: 'trap', slot: t.slot } });
+  }
+  for (const c of LAYOUT.catapults) {
+    if (houseLevel >= 2 && state.world >= c.minWorld && !has(c.slot)) {
+      specs.push({ id: c.slot, ...at(c), cost: COST.catapult, action: { type: 'build', kind: 'catapult', slot: c.slot } });
+    }
+  }
+
+  // Amélioration de chaque tour : bois → pierre → cristal.
+  for (const tower of state.structures) {
+    if (tower.kind !== 'tower' || tower.level >= STRUCTURE_MAX_LEVEL) continue;
+    const level = tower.level + 1;
+    specs.push({
+      id: `${tower.slot}-${level}`,
+      x: tower.x,
+      y: tower.y + 64,
+      cost: TOWER_UPGRADE_COST[level],
+      foodCost: FOOD_COST.tower[level],
+      action: { type: 'upgradeStructure', slot: tower.slot, level },
+    });
   }
 
   for (const side of WALL_SIDES) {
@@ -123,9 +191,12 @@ function syncPads(state: GameState) {
   const old = new Map(state.pads.map((p) => [p.id, p]));
   state.pads = padSpecs(state).map((spec) => {
     const prev = old.get(spec.id);
+    const foodCost = spec.foodCost ?? 0;
     return {
       ...spec,
-      paid: Math.min(prev?.paid ?? 0, spec.cost - 1),
+      foodCost,
+      foodPaid: Math.min(prev?.foodPaid ?? 0, foodCost),
+      paid: Math.min(prev?.paid ?? 0, spec.cost - (foodCost > 0 ? 0 : 1)),
       feedTimer: prev?.feedTimer ?? FEED_START_DELAY,
       pulse: prev?.pulse ?? 0,
     };
@@ -162,6 +233,14 @@ function complete(state: GameState, pad: Pad) {
       s.level = action.level;
       s.maxHp = s.hp = stats(s.kind, s.level).hp;
       s.pop = 0;
+      spawnBurst(state, s.x, s.y, 50, 24, 'confetti', FX_COLORS.confetti, 1.4);
+    }
+  } else if (action.type === 'upgradeWalls') {
+    state.wallLevel = action.level;
+    for (const s of state.structures) {
+      if (s.kind !== 'wall') continue;
+      s.maxHp = s.hp = stats('wall', 1, state.wallLevel).hp;
+      s.pop = 0;
     }
   } else {
     state.hero.weapon.forge = action.level;
@@ -184,20 +263,31 @@ export function updatePads(state: GameState, dt: number) {
   for (const pad of state.pads) {
     pad.pulse = Math.max(0, pad.pulse - dt * 6);
     const onPad = !hero.dead && dist(hero.x, hero.y, pad.x, pad.y) < PAD_RADIUS + 4;
-    if (!onPad || state.inventory.wood <= 0) {
+    const needWood = pad.paid < pad.cost && state.inventory.wood > 0;
+    const needFood = pad.foodPaid < pad.foodCost && state.inventory.food > 0;
+    if (!onPad || (!needWood && !needFood)) {
       pad.feedTimer = FEED_START_DELAY;
       continue;
     }
     pad.feedTimer -= dt;
-    while (pad.feedTimer <= 0 && state.inventory.wood > 0 && pad.paid < pad.cost) {
+    while (pad.feedTimer <= 0) {
+      const wood = pad.paid < pad.cost && state.inventory.wood > 0;
+      const food = pad.foodPaid < pad.foodCost && state.inventory.food > 0;
+      if (!wood && !food) break;
       pad.feedTimer += PAD_FEED_INTERVAL;
-      state.inventory.wood--;
-      pad.paid++;
+      if (wood) {
+        state.inventory.wood--;
+        pad.paid++;
+      }
+      if (food) {
+        state.inventory.food--;
+        pad.foodPaid++;
+      }
       pad.pulse = 1;
-      state.flyingLogs.push({ fromX: hero.x, fromY: hero.y - 30, toX: pad.x, toY: pad.y, t: 0 });
+      state.flyingLogs.push({ fromX: hero.x, fromY: hero.y - 30, toX: pad.x, toY: pad.y, t: 0, food: !wood });
       state.events.push({ type: 'padFed' });
     }
-    if (pad.paid >= pad.cost) {
+    if (pad.paid >= pad.cost && pad.foodPaid >= pad.foodCost) {
       complete(state, pad);
       break; // la liste va être recalculée
     }

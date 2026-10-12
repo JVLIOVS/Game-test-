@@ -43,6 +43,8 @@ export function spawnText(
   color: string,
   options: { log?: boolean; size?: number } = {},
 ) {
+  // Avec des centaines de zombies, on limite le nombre de chiffres à l'écran.
+  if (state.texts.length > 70) state.texts.shift();
   state.texts.push({
     x: x + fxRandom(-8, 8),
     y,

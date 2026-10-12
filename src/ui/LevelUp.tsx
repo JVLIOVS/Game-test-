@@ -19,6 +19,9 @@ const TONES: Record<CardId, { bg: string; dark: string }> = {
   bomb: { bg: '#B05BD6', dark: '#7E3AA3' },
   lightning: { bg: '#5B8DEF', dark: '#3A63B8' },
   engineer: { bg: '#4FB8B0', dark: '#2E8A84' },
+  frost: { bg: '#6FB7F0', dark: '#3E86C2' },
+  poison: { bg: '#7FBF3F', dark: '#55882A' },
+  wolf: { bg: '#8E979E', dark: '#5E666E' },
   heal: { bg: '#7BD35A', dark: '#4E9A35' },
   woodBag: { bg: '#C88A4E', dark: '#94622F' },
 };
@@ -75,7 +78,7 @@ export function LevelUp({ level, cards, levels, ownedCount, onPick }: Props) {
         {t('levelup.title', { n: level })}
       </Animated.Text>
       <Text style={styles.sub}>
-        {ownedCount >= PERK_SLOTS ? t('card.slotsFull') : `${t('levelup.sub')} · ${t('card.slots', { n: ownedCount })}`}
+        {ownedCount >= PERK_SLOTS ? t('card.slotsFull') : `${t('levelup.sub')} · ${t('card.slots', { n: ownedCount, max: PERK_SLOTS })}`}
       </Text>
       <View style={styles.list}>
         {cards.map((card, i) => (

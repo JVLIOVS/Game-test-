@@ -1,5 +1,7 @@
 import { ClipOp, PaintStyle, Skia, TileMode, type SkCanvas, type SkFont, type SkPaint } from '@shopify/react-native-skia';
-import { PAD_RADIUS, TOWER_RANGE } from '../game/constants';
+import { PAD_RADIUS } from '../game/constants';
+import { PERK_VALUES, perkPhase } from '../game/data/perks';
+import { towerRange } from '../game/systems/towers';
 import { orbitPositions } from '../game/systems/weapons';
 import { soldierHelmet } from '../game/systems/units';
 import type { GameState, Pad, Slash } from '../game/types';
@@ -8,6 +10,13 @@ import type { JoystickState } from '../input/joystick';
 import { worldDef } from '../game/data/worlds';
 import { PALETTE as C, THEME, fill, setTheme, stroke } from './palette';
 import {
+  drawAnimal,
+  drawLodge,
+  drawMeatIcon,
+  drawTrap,
+  drawCatapult,
+  drawTurret,
+  drawWolf,
   drawBarracks,
   drawBomb,
   drawLumberCamp,
@@ -41,7 +50,7 @@ export interface Fonts {
 
 const VIEW_MARGIN = 160;
 const BORDER_SPACING = 56;
-const CAMP_RADIUS = 390;
+const CAMP_RADIUS = 465;
 
 /** Zoom adapté à l'écran : plus de carte visible sur iPad. */
 function cameraScale(width: number) {
@@ -95,7 +104,11 @@ function padLabel(pad: Pad): string {
   const a = pad.action;
   if (a.type === 'upgradeHouse') return t('pad.house', { level: a.level });
   if (a.type === 'forge') return t('pad.forge', { level: a.level });
-  if (a.type === 'upgradeStructure') return t(a.slot === 'barracks' ? 'pad.barracksUp' : 'pad.lumberUp', { level: a.level });
+  if (a.type === 'upgradeWalls') return t('pad.walls', { level: a.level });
+  if (a.type === 'upgradeStructure') {
+    const key = a.slot.startsWith('tower') ? 'pad.towerUp' : a.slot === 'barracks' ? 'pad.barracksUp' : a.slot === 'lodge' ? 'pad.lodgeUp' : 'pad.lumberUp';
+    return t(key, { level: a.level });
+  }
   return t(`pad.${a.kind}`);
 }
 
@@ -112,12 +125,28 @@ function drawPadIcon(canvas: SkCanvas, pad: Pad, state: GameState) {
     canvas.rotate(25, 0, 0);
     canvas.scale(0.7, 0.7);
     drawMainWeapon(canvas, state.hero.weapon.type, Math.max(1, state.equipment.sword), a.level);
-  } else if (a.type === 'upgradeStructure' || a.kind === 'barracks' || a.kind === 'lumber') {
+  } else if (a.type === 'upgradeWalls') {
+    canvas.scale(0.6, 0.6);
+    drawStakes(canvas, 1, 0, 0, a.level);
+  } else if (a.type === 'upgradeStructure' || a.kind === 'barracks' || a.kind === 'lumber' || a.kind === 'lodge') {
     const slot = a.type === 'upgradeStructure' ? a.slot : a.kind;
     const level = a.type === 'upgradeStructure' ? a.level : 1;
-    canvas.scale(0.45, 0.45);
-    if (slot === 'barracks') drawBarracks(canvas, level, 0, time);
-    else drawLumberCamp(canvas, level, 0);
+    if (slot.startsWith('tower')) {
+      canvas.scale(0.3, 0.3);
+      drawTower(canvas, 0, 0, level, time);
+    } else {
+      canvas.scale(0.45, 0.45);
+      if (slot === 'barracks') drawBarracks(canvas, level, 0, time);
+      else if (slot === 'lodge') drawLodge(canvas, level, 0);
+      else drawLumberCamp(canvas, level, 0);
+    }
+  } else if (a.kind === 'trap') {
+    canvas.translate(0, -16);
+    canvas.scale(0.6, 0.6);
+    drawTrap(canvas, time);
+  } else if (a.kind === 'catapult') {
+    canvas.scale(0.55, 0.55);
+    drawCatapult(canvas, 0, 0);
   } else if (a.kind === 'wall') {
     canvas.scale(0.6, 0.6);
     drawStakes(canvas, 1, 0, 0);
@@ -151,15 +180,30 @@ function drawPadGround(canvas: SkCanvas, pad: Pad, heroOn: boolean, dash: SkPain
   canvas.restore();
 }
 
-/** Nom et prix restant : dessinés après les personnages pour rester lisibles. */
+/** Nom et prix restant (bois, et nourriture si besoin) : dessinés après les personnages pour rester lisibles. */
 function drawPadLabels(canvas: SkCanvas, pad: Pad, font: SkFont) {
   const r = PAD_RADIUS;
   drawOutlinedText(canvas, padLabel(pad), pad.x, pad.y - r - 10, font, C.white);
-  const remaining = `${pad.cost - pad.paid}`;
-  const w = font.getTextWidth(remaining);
-  drawOutlinedText(canvas, remaining, pad.x - 9, pad.y + r + 22, font, C.hpBuilding);
-  drawLogIcon(canvas, pad.x + w / 2 + 5, pad.y + r + 16, 0.8);
+  const wood = pad.cost - pad.paid;
+  const food = pad.foodCost - pad.foodPaid;
+  const parts: { text: string; food: boolean }[] = [];
+  if (wood > 0) parts.push({ text: `${wood}`, food: false });
+  if (food > 0) parts.push({ text: `${food}`, food: true });
+  const widths = parts.map((p) => font.getTextWidth(p.text) + 26);
+  let x = pad.x - widths.reduce((a, b) => a + b, 0) / 2;
+  parts.forEach((p, i) => {
+    const w = font.getTextWidth(p.text);
+    drawOutlinedText(canvas, p.text, x + w / 2, pad.y + r + 22, font, p.food ? '#FF8A7A' : C.hpBuilding);
+    if (p.food) drawMeatIcon(canvas, x + w + 12, pad.y + r + 16, 0.6);
+    else drawLogIcon(canvas, x + w + 12, pad.y + r + 16, 0.8);
+    x += widths[i];
+  });
 }
+
+/** Les améliorations de tour n'apparaissent que quand le héros est à côté (sinon trop d'emplacements). */
+const padShown = (pad: Pad, state: GameState) =>
+  !(pad.action.type === 'upgradeStructure' && pad.action.slot.startsWith('tower')) ||
+  Math.hypot(state.hero.x - pad.x, state.hero.y - pad.y) < 240;
 
 type Drawable = { y: number; draw: () => void };
 
@@ -296,8 +340,46 @@ export function drawWorld(
   }
 
   // Emplacements de construction (au sol)
+  // Zones au sol : flammes et nuages toxiques
+  for (const h of state.hazards) {
+    if (!visible(h.x, h.y)) continue;
+    const a = Math.min(1, h.life / 0.6);
+    if (h.kind === 'fire') {
+      const p1 = fill('rgba(255,120,30,0.28)');
+      p1.setAlphaf(0.28 * a);
+      canvas.drawOval(Skia.XYWHRect(h.x - h.radius, h.y - h.radius * 0.55, h.radius * 2, h.radius * 1.1), p1);
+      p1.setAlphaf(1);
+      for (let i = 0; i < 5; i++) {
+        const fx = h.x + Math.cos(i * 1.3 + h.x) * h.radius * 0.6;
+        const fy = h.y + Math.sin(i * 1.7 + h.y) * h.radius * 0.3;
+        const fh = 10 + Math.sin(state.time * 12 + i) * 4;
+        canvas.drawOval(Skia.XYWHRect(fx - 5, fy - fh, 10, fh), fill(i % 2 ? '#FFB020' : '#FF6B2B'));
+      }
+    } else {
+      const p1 = fill('rgba(140,220,90,0.32)');
+      p1.setAlphaf(0.32 * a);
+      for (let i = 0; i < 4; i++) {
+        const r = h.radius * (0.55 + 0.15 * Math.sin(state.time * 2 + i));
+        canvas.drawCircle(h.x + Math.cos(i * 1.6) * h.radius * 0.35, h.y - 10 + Math.sin(i * 1.6) * h.radius * 0.2, r, p1);
+      }
+      p1.setAlphaf(1);
+    }
+  }
+
+  // Aura de givre autour du héros
+  const frost = perkPhase(state.perks.frost);
+  if (frost > 0 && !hero.dead) {
+    const r = PERK_VALUES.frost.radius[frost];
+    canvas.drawOval(Skia.XYWHRect(hero.x - r, hero.y - r * 0.6, r * 2, r * 1.2), fill('rgba(150,210,255,0.16)'));
+    canvas.drawOval(Skia.XYWHRect(hero.x - r, hero.y - r * 0.6, r * 2, r * 1.2), stroke('rgba(200,235,255,0.55)', 2));
+    for (let i = 0; i < 4 + frost * 2; i++) {
+      const a = state.time * 0.8 + (i / (4 + frost * 2)) * Math.PI * 2;
+      canvas.drawCircle(hero.x + Math.cos(a) * r * 0.85, hero.y + Math.sin(a) * r * 0.5 - 6, 2.5 + frost * 0.5, fill(C.white));
+    }
+  }
+
   for (const pad of state.pads) {
-    if (!visible(pad.x, pad.y)) continue;
+    if (!visible(pad.x, pad.y) || !padShown(pad, state)) continue;
     const heroOn = !hero.dead && Math.hypot(hero.x - pad.x, hero.y - pad.y) < PAD_RADIUS + 4;
     drawPadGround(canvas, pad, heroOn, paints.dash, state);
   }
@@ -313,7 +395,7 @@ export function drawWorld(
   for (const s of state.structures) {
     if (!visible(s.x, s.y)) continue;
     if (s.kind !== 'wall') drawShadow(canvas, s.x + 6, s.y + 4, s.radius * 1.1, s.radius * 0.4);
-    drawables.push({ y: s.y, draw: () => drawStructure(canvas, s, base.x, base.y, state.time, Math.min(3, state.perks.engineer)) });
+    drawables.push({ y: s.y, draw: () => drawStructure(canvas, s, base.x, base.y, state.time, Math.min(3, state.perks.engineer), state.wallLevel) });
   }
   for (const c of state.chests) {
     if (!visible(c.x, c.y)) continue;
@@ -327,6 +409,21 @@ export function drawWorld(
     if (!visible(z.x, z.y)) continue;
     drawShadow(canvas, z.x, z.y, z.boss ? 34 : 15, z.boss ? 11 : 5);
     drawables.push({ y: z.y, draw: () => drawZombie(canvas, z) });
+  }
+  for (const a of state.animals) {
+    if (!visible(a.x, a.y)) continue;
+    drawShadow(canvas, a.x, a.y, a.kind === 'rabbit' ? 9 : 16, 4);
+    drawables.push({ y: a.y, draw: () => drawAnimal(canvas, a) });
+  }
+  for (const w of state.pets) {
+    if (!visible(w.x, w.y)) continue;
+    drawShadow(canvas, w.x, w.y, w.alpha ? 22 : 14, 5);
+    drawables.push({ y: w.y, draw: () => drawWolf(canvas, w, state.time) });
+  }
+  for (const tu of state.turrets) {
+    if (!visible(tu.x, tu.y)) continue;
+    drawShadow(canvas, tu.x, tu.y, 14, 4);
+    drawables.push({ y: tu.y, draw: () => drawTurret(canvas, tu) });
   }
   const helmet = soldierHelmet(state);
   for (const u of state.units) {
@@ -344,15 +441,80 @@ export function drawWorld(
   // Traces des coups d'arme
   for (const sl of state.slashes) drawSlash(canvas, sl);
 
-  // Haches tournoyantes
-  if (!hero.dead) for (const o of orbitPositions(state)) drawSpinningAxe(canvas, o.x, o.y, o.angle, Math.min(3, state.perks.orbit));
+  // Haches tournoyantes : flammes en phase 2, tornade de lames d'or en phase 3
+  const orbit = perkPhase(state.perks.orbit);
+  if (!hero.dead && orbit > 0) {
+    if (orbit >= 3) {
+      const r = PERK_VALUES.orbit.radius[3];
+      for (let i = 0; i < 3; i++) {
+        const rr = r * (0.75 + i * 0.15);
+        canvas.drawArc(Skia.XYWHRect(hero.x - rr, hero.y - 20 - rr * 0.75, rr * 2, rr * 1.5), ((state.time * 300 + i * 120) % 360), 140, false, stroke('rgba(255,255,255,0.35)', 4));
+      }
+    }
+    for (const o of orbitPositions(state)) {
+      if (orbit === 2) {
+        canvas.drawCircle(o.x, o.y, 22, fill('rgba(255,120,30,0.35)'));
+        canvas.drawCircle(o.x, o.y, 12, fill('rgba(255,210,90,0.45)'));
+      }
+      drawSpinningAxe(canvas, o.x, o.y, o.angle, orbit);
+    }
+  }
+
+  // Nuage d'orage au-dessus du héros (Éclair phase 3)
+  if (!hero.dead && perkPhase(state.perks.lightning) >= 3) {
+    const cx = hero.x;
+    const cy = hero.y - 150 + Math.sin(state.time * 1.5) * 6;
+    const flash = state.bolts.length > 0;
+    for (const [ox, oy, r] of [[-30, 6, 24], [0, -6, 32], [32, 4, 24], [12, 12, 22], [-14, 12, 20]] as const) {
+      canvas.drawCircle(cx + ox, cy + oy, r + 3, fill(C.outline));
+    }
+    for (const [ox, oy, r] of [[-30, 6, 24], [0, -6, 32], [32, 4, 24], [12, 12, 22], [-14, 12, 20]] as const) {
+      canvas.drawCircle(cx + ox, cy + oy, r, fill(flash ? '#D8D2FF' : '#5E5A78'));
+    }
+  }
+
+  // Pluie de flèches et météores
+  for (const d of state.skyDrops) {
+    if (d.t < 0) continue;
+    if (d.kind === 'arrow') {
+      const y = d.y - (1 - d.t) * 260;
+      canvas.drawLine(d.x - 4, y - 22, d.x, y, stroke(C.outline, 5));
+      canvas.drawLine(d.x - 4, y - 22, d.x, y, stroke('#5BE0FF', 2.5));
+    } else {
+      const k = d.t;
+      canvas.drawOval(Skia.XYWHRect(d.x - d.radius * k * 0.6, d.y - d.radius * k * 0.3, d.radius * k * 1.2, d.radius * k * 0.6), fill('rgba(43,34,56,0.3)'));
+      const mx = d.x - (1 - k) * 260;
+      const my = d.y - (1 - k) * 520;
+      canvas.drawLine(mx - 60, my - 120, mx, my, stroke('rgba(255,140,40,0.5)', 22));
+      canvas.drawCircle(mx, my, 26, fill(C.outline));
+      canvas.drawCircle(mx, my, 23, fill('#C2352B'));
+      canvas.drawCircle(mx - 6, my - 6, 9, fill('#FFB020'));
+    }
+  }
+
+  // Ondes : gel, hurlement, impact de météore
+  for (const n of state.novas) {
+    const k = 1 - n.life / n.maxLife;
+    const r = n.radius * (0.3 + 0.7 * k);
+    const color = n.kind === 'frost' ? 'rgba(170,225,255,0.8)' : n.kind === 'howl' ? 'rgba(255,255,255,0.7)' : 'rgba(255,150,40,0.8)';
+    const paint = stroke(color, 8 * (1 - k) + 2);
+    canvas.drawOval(Skia.XYWHRect(n.x - r, n.y - r * 0.6, r * 2, r * 1.2), paint);
+    if (n.kind === 'frost') canvas.drawOval(Skia.XYWHRect(n.x - r, n.y - r * 0.6, r * 2, r * 1.2), fill('rgba(170,225,255,0.15)'));
+  }
 
   // Bombes en vol (ombre au sol + bombe en cloche)
   for (const b of state.bombs) {
     const x = b.fromX + (b.toX - b.fromX) * b.t;
     const y = b.fromY + (b.toY - b.fromY) * b.t;
     drawShadow(canvas, x, y + 30 * (1 - b.t), 8, 3);
-    drawBomb(canvas, x, y - Math.sin(Math.PI * b.t) * (b.cluster < 0 ? 50 : 110), state.time, b.phase);
+    const by = y - Math.sin(Math.PI * b.t) * (b.boulder ? 160 : b.cluster < 0 ? 50 : 110);
+    if (b.boulder) {
+      canvas.drawCircle(x, by, 12, fill(C.outline));
+      canvas.drawCircle(x, by, 10, fill(C.stoneDark));
+      canvas.drawCircle(x - 3, by - 3, 3, fill(C.stone));
+    } else {
+      drawBomb(canvas, x, by, state.time, b.phase);
+    }
   }
 
   // Éclairs
@@ -372,6 +534,19 @@ export function drawWorld(
       px = nx;
       py = ny;
     }
+    // Éclair en chaîne : arcs entre les zombies touchés
+    let cx = bolt.x;
+    let cy = bolt.y - 20;
+    for (const pnt of bolt.chain) {
+      const mx = (cx + pnt.x) / 2 + Math.sin(bolt.seed + pnt.x) * 14;
+      const my = (cy + pnt.y - 20) / 2 + Math.cos(bolt.seed + pnt.y) * 14;
+      canvas.drawLine(cx, cy, mx, my, glow);
+      canvas.drawLine(mx, my, pnt.x, pnt.y - 20, glow);
+      canvas.drawLine(cx, cy, mx, my, core);
+      canvas.drawLine(mx, my, pnt.x, pnt.y - 20, core);
+      cx = pnt.x;
+      cy = pnt.y - 20;
+    }
     glow.setAlphaf(1);
     core.setAlphaf(1);
   }
@@ -381,6 +556,12 @@ export function drawWorld(
     if (p.style === 'cannon') {
       canvas.drawCircle(p.x, p.y, 7, fill(C.outline));
       canvas.drawCircle(p.x - 2, p.y - 2, 2, fill(C.white));
+      continue;
+    }
+    if (p.style === 'magic') {
+      canvas.drawCircle(p.x, p.y, 13, fill('rgba(91,224,255,0.35)'));
+      canvas.drawCircle(p.x, p.y, 7, fill('#5BE0FF'));
+      canvas.drawCircle(p.x - 2, p.y - 2, 3, fill(C.white));
       continue;
     }
     const len = Math.hypot(p.vx, p.vy) || 1;
@@ -426,7 +607,7 @@ export function drawWorld(
   }
 
   if (fonts.small) {
-    for (const pad of state.pads) if (visible(pad.x, pad.y)) drawPadLabels(canvas, pad, fonts.small);
+    for (const pad of state.pads) if (visible(pad.x, pad.y) && padShown(pad, state)) drawPadLabels(canvas, pad, fonts.small);
   }
 
   // Barres de vie
@@ -448,7 +629,7 @@ export function drawWorld(
   // Portée des tours, discrète, la nuit
   if (cycle.darkness > 0.2) {
     for (const s of state.structures) {
-      if (s.kind === 'tower' && visible(s.x, s.y)) canvas.drawCircle(s.x, s.y, TOWER_RANGE, stroke('rgba(255,255,255,0.12)', 2));
+      if (s.kind === 'tower' && visible(s.x, s.y)) canvas.drawCircle(s.x, s.y, towerRange(s.level), stroke('rgba(255,255,255,0.12)', 2));
     }
   }
 

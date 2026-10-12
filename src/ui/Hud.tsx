@@ -20,6 +20,35 @@ function Bar({ ratio, color, width }: { ratio: number; color: string; width: num
 
 const formatTime = (s: number) => `${Math.floor(s / 60)}:${String(Math.max(0, s % 60)).padStart(2, '0')}`;
 
+/** Missions en cours, en bas à gauche de l'écran. */
+export function Quests({ hud }: { hud: HudState }) {
+  const insets = useSafeAreaInsets();
+  if (hud.quests === '') return null;
+  return (
+    <View pointerEvents="none" style={{ position: 'absolute', left: insets.left + 12, bottom: insets.bottom + 14 }}>
+      <View style={styles.quests}>
+        {hud.quests.split('|').map((q) => {
+          const [kind, progress, target] = q.split(':');
+          const done = Number(progress) / Number(target);
+          return (
+            <View key={kind} style={styles.quest}>
+              <Text style={styles.questText} numberOfLines={1}>
+                {t(`quest.${kind}` as TranslationKey, { n: target })}
+              </Text>
+              <View style={styles.questBar}>
+                <View style={[styles.questFill, { width: `${Math.round(done * 100)}%` }]} />
+              </View>
+              <Text style={styles.questCount}>
+                {progress}/{target}
+              </Text>
+            </View>
+          );
+        })}
+      </View>
+    </View>
+  );
+}
+
 export function Hud({ hud }: { hud: HudState }) {
   const insets = useSafeAreaInsets();
   const bump = useSharedValue(1);
@@ -41,6 +70,10 @@ export function Hud({ hud }: { hud: HudState }) {
           </View>
           <Text style={styles.count}>{hud.wood}</Text>
         </Animated.View>
+        <View style={styles.foodPill}>
+          <Text style={styles.foodIcon}>🍖</Text>
+          <Text style={styles.foodCount}>{hud.food}</Text>
+        </View>
         <View style={styles.row}>
           <View style={styles.heart} />
           <Bar ratio={hud.heroHp} color="#7BD35A" width={96} />
@@ -174,6 +207,33 @@ const styles = StyleSheet.create({
     justifyContent: 'center',
   },
   equipIcon: { fontSize: 17 },
+  foodPill: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    alignSelf: 'flex-start',
+    backgroundColor: 'rgba(43,34,56,0.82)',
+    borderRadius: 16,
+    paddingVertical: 2,
+    paddingHorizontal: 10,
+    borderWidth: 2,
+    borderColor: '#2B2238',
+    gap: 6,
+  },
+  foodIcon: { fontSize: 15 },
+  foodCount: { color: '#FF8A7A', fontSize: 17, fontFamily: FONT.bold, minWidth: 20 },
+  quests: {
+    alignSelf: 'flex-start',
+    gap: 4,
+    backgroundColor: 'rgba(43,34,56,0.7)',
+    borderRadius: 12,
+    padding: 6,
+    maxWidth: 230,
+  },
+  quest: { flexDirection: 'row', alignItems: 'center', gap: 6 },
+  questText: { color: '#FFFFFF', fontSize: 12, fontFamily: FONT.semi, flexShrink: 1, width: 118 },
+  questBar: { width: 46, height: 6, borderRadius: 3, backgroundColor: 'rgba(255,255,255,0.2)' },
+  questFill: { height: 6, borderRadius: 3, backgroundColor: '#7BD35A' },
+  questCount: { color: '#FFD25A', fontSize: 11, fontFamily: FONT.bold, minWidth: 34 },
   slotStars: { fontSize: 11, color: '#FFD25A', fontFamily: FONT.bold, marginTop: -2 },
   forge: {
     position: 'absolute',

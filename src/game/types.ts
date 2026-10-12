@@ -48,7 +48,7 @@ export interface Decor {
   size: number;
 }
 
-export type StructureKind = 'house' | 'wall' | 'tower' | 'workshop' | 'barracks' | 'lumber';
+export type StructureKind = 'house' | 'wall' | 'tower' | 'workshop' | 'barracks' | 'lumber' | 'lodge' | 'trap' | 'catapult';
 
 export interface Structure {
   id: number;
@@ -73,7 +73,41 @@ export type PadAction =
   | { type: 'build'; kind: Exclude<StructureKind, 'house'>; slot: string }
   | { type: 'upgradeHouse'; level: number }
   | { type: 'upgradeStructure'; slot: string; level: number }
+  | { type: 'upgradeWalls'; level: number }
   | { type: 'forge'; level: number };
+
+export type AnimalKind = 'rabbit' | 'deer' | 'boar';
+
+export type QuestKind = 'zombies' | 'trees' | 'animals' | 'build' | 'gems' | 'boss';
+
+/** Mission en cours de partie. */
+export interface Quest {
+  id: number;
+  kind: QuestKind;
+  target: number;
+  progress: number;
+  rewardWood: number;
+  rewardFood: number;
+  rewardGems: number;
+}
+
+/** Animal de la forêt : se chasse pour la nourriture. */
+export interface Animal {
+  id: number;
+  kind: AnimalKind;
+  x: number;
+  y: number;
+  vx: number;
+  vy: number;
+  hp: number;
+  heading: number;
+  timer: number;
+  walkTime: number;
+  dirX: 1 | -1;
+  hitFlash: number;
+  /** Chasseur qui le vise (pour ne pas être deux sur le même). */
+  claimedBy: number | null;
+}
 
 /** Arme principale du héros : chaque type tue différemment. */
 export type WeaponType = 'sword' | 'spear' | 'hammer' | 'daggers';
@@ -87,7 +121,7 @@ export interface MainWeapon {
 /** Ouvrier (récolte le bois) ou soldat (défend la base). */
 export interface Unit {
   id: number;
-  kind: 'worker' | 'soldier';
+  kind: 'worker' | 'soldier' | 'hunter';
   x: number;
   y: number;
   vx: number;
@@ -125,6 +159,9 @@ export interface Pad {
   y: number;
   cost: number;
   paid: number;
+  /** Nourriture demandée en plus du bois (0 si aucune). */
+  foodCost: number;
+  foodPaid: number;
   action: PadAction;
   feedTimer: number;
   /** 0..1, pulsation à chaque dépôt. */
@@ -144,7 +181,7 @@ export interface Hero {
   swingTime: number;
   swingCooldown: number;
   swingHitDone: boolean;
-  target: { kind: 'tree' | 'zombie'; id: number } | null;
+  target: { kind: 'tree' | 'zombie' | 'animal'; id: number } | null;
   hp: number;
   maxHp: number;
   hurtFlash: number;
@@ -188,6 +225,13 @@ export interface Zombie {
   unitTargetId: number | null;
   /** Zombie d'embuscade : il chasse le héros au lieu d'attaquer la base. */
   hunter: boolean;
+  /** Marcheur, coureur (rapide et fragile) ou brute (lente et costaude). */
+  kind: ZombieKind;
+  /** Ralentissement (aura de givre), 0..1. */
+  slow: number;
+  /** Dégâts de poison restants par seconde, et durée. */
+  poison: number;
+  poisonTime: number;
 }
 
 export interface Projectile {
@@ -199,7 +243,7 @@ export interface Projectile {
   damage: number;
   targetId: number;
   /** Apparence : flèche de tour, ou phase de l'arc (1 bois, 2 feu, 3 glace). */
-  style: 'tower' | 'bow1' | 'bow2' | 'bow3' | 'cannon';
+  style: 'tower' | 'bolt' | 'magic' | 'bow1' | 'bow2' | 'bow3' | 'cannon';
   /** Rayon d'explosion à l'impact (0 = aucune). */
   splash: number;
 }
@@ -218,6 +262,8 @@ export interface Bomb {
   phase: number;
   /** Petites bombes secondaires à l'explosion (phase 3). */
   cluster: number;
+  /** Rocher de catapulte (dessin différent). */
+  boulder?: boolean;
 }
 
 /** Éclair (effet visuel ; les dégâts sont appliqués tout de suite). */
@@ -227,6 +273,64 @@ export interface Bolt {
   life: number;
   seed: number;
   phase: number;
+  /** Éclair en chaîne : les points touchés après le premier. */
+  chain: { x: number; y: number }[];
+}
+
+/** Zone au sol qui blesse les zombies : flammes ou nuage toxique. */
+export interface Hazard {
+  x: number;
+  y: number;
+  radius: number;
+  life: number;
+  maxLife: number;
+  kind: 'fire' | 'toxic';
+  dps: number;
+}
+
+/** Projectile qui tombe du ciel : flèche de la pluie de flèches ou météore. */
+export interface SkyDrop {
+  x: number;
+  y: number;
+  t: number;
+  duration: number;
+  radius: number;
+  damage: number;
+  kind: 'arrow' | 'meteor';
+}
+
+/** Loup compagnon (atout). */
+export interface Pet {
+  id: number;
+  x: number;
+  y: number;
+  vx: number;
+  vy: number;
+  targetId: number | null;
+  cooldown: number;
+  alpha: boolean;
+  walkTime: number;
+  dirX: 1 | -1;
+  bite: number;
+}
+
+/** Tourelle portable posée par l'atout Ingénieur. */
+export interface Turret {
+  x: number;
+  y: number;
+  life: number;
+  cooldown: number;
+  pop: number;
+}
+
+/** Effet visuel circulaire (onde de gel, hurlement...). */
+export interface Nova {
+  x: number;
+  y: number;
+  radius: number;
+  life: number;
+  maxLife: number;
+  kind: 'frost' | 'howl' | 'meteor';
 }
 
 /** Gemme d'expérience laissée par un zombie. */
@@ -240,7 +344,9 @@ export interface Gem {
   age: number;
 }
 
-export type PerkId = 'bow' | 'orbit' | 'bomb' | 'lightning' | 'engineer';
+export type PerkId = 'bow' | 'orbit' | 'bomb' | 'lightning' | 'engineer' | 'frost' | 'poison' | 'wolf';
+
+export type ZombieKind = 'walker' | 'runner' | 'brute';
 
 export type EquipSlot = 'sword' | 'shield' | 'armor';
 
@@ -300,6 +406,8 @@ export interface FlyingLog {
   toX: number;
   toY: number;
   t: number;
+  /** Morceau de viande au lieu d'une bûche. */
+  food?: boolean;
 }
 
 export interface Cycle {
@@ -311,6 +419,8 @@ export interface Cycle {
   toSpawn: number;
   spawnTimer: number;
   bossSpawned: boolean;
+  /** Directions d'où arrivent les hordes cette nuit. */
+  hordeAngles: number[];
   /** 0 = plein jour, 1 = nuit noire. */
   darkness: number;
 }
@@ -342,6 +452,8 @@ export type GameEvent =
   | { type: 'weaponFound' }
   | { type: 'unitSpawned'; kind: Unit['kind'] }
   | { type: 'crit' }
+  | { type: 'animalKilled' }
+  | { type: 'questDone'; kind: QuestKind }
   | { type: 'worldAdvance'; world: number };
 
 export interface GameState {
@@ -364,7 +476,23 @@ export interface GameState {
   /** Niveau de chaque atout (0 = pas pris). */
   perks: Record<PerkId, number>;
   /** Chronomètres des armes automatiques. */
-  weaponTimers: { bow: number; bomb: number; lightning: number; orbitAngle: number };
+  weaponTimers: {
+    bow: number;
+    volley: number;
+    bomb: number;
+    meteor: number;
+    lightning: number;
+    orbitAngle: number;
+    deploy: number;
+    nova: number;
+    poison: number;
+    tick: number;
+  };
+  hazards: Hazard[];
+  skyDrops: SkyDrop[];
+  pets: Pet[];
+  turrets: Turret[];
+  novas: Nova[];
   /** Cartes proposées en ce moment (le jeu est en pause tant qu'on n'a pas choisi). */
   choice: CardId[] | null;
   /** Passages de niveau en attente de choix. */
@@ -378,6 +506,12 @@ export interface GameState {
   /** Palier de chaque équipement (0 = pas encore gagné). */
   equipment: Record<EquipSlot, number>;
   units: Unit[];
+  quests: Quest[];
+  questsDone: number;
+  animals: Animal[];
+  animalTimer: number;
+  /** Niveau de la palissade (1 pieux, 2 pierre, 3 rempart). */
+  wallLevel: number;
   slashes: Slash[];
   /** Temps avant le prochain micro-événement. */
   happeningTimer: number;

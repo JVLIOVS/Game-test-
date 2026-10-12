@@ -6,7 +6,8 @@ import {
   zombieWave,
 } from '../constants';
 import { fxRandom } from '../rng';
-import type { GameState, Structure, Unit, Zombie } from '../types';
+import type { GameState, Structure, Unit, Zombie, ZombieKind } from '../types';
+import { forTreesNear } from '../world/grid';
 import { damageStructure, getHouse } from './build';
 import { dist, nextId, pushOut } from './common';
 import { damageHero } from './hero';
@@ -39,9 +40,9 @@ function updateGoldenZombie(state: GameState, z: Zombie, dt: number) {
   z.vy += ((ay / l) * speed - z.vy) * k;
   z.x = Math.min(state.map.width - 30, Math.max(30, z.x + z.vx * dt));
   z.y = Math.min(state.map.height - 30, Math.max(30, z.y + z.vy * dt));
-  for (const tree of state.trees) {
+  forTreesNear(state.trees, z.x, z.y, (tree) => {
     if (tree.state === 'standing') pushOut(z, z.radius, tree.x, tree.y, tree.radius);
-  }
+  });
 }
 
 /** Point d'apparition : sur un grand cercle autour de la base (la carte est très grande). */
@@ -56,6 +57,7 @@ export function spawnPoint(state: GameState, angle = Math.random() * Math.PI * 2
 /** Le boss arrive du côté le plus proche du héros, pour qu'on le voie venir. */
 export function spawnBoss(state: GameState, round: number, size: 'mini' | 'big') {
   const st = bossStats(round, size);
+  const kind: ZombieKind = 'brute';
   const toward = Math.atan2(state.hero.y - state.base.y, state.hero.x - state.base.x);
   const { x, y } = spawnPoint(state, toward, 750);
   state.bossAlive = true;
@@ -81,23 +83,43 @@ export function spawnBoss(state: GameState, round: number, size: 'mini' | 'big')
     golden: false,
     unitTargetId: null,
     hunter: false,
+    kind,
+    slow: 0,
+    poison: 0,
+    poisonTime: 0,
   });
 }
 
-export function spawnZombie(state: GameState, night: number) {
+const KIND_STATS: Record<ZombieKind, { hp: number; speed: number; damage: number; radius: number }> = {
+  walker: { hp: 1, speed: 1, damage: 1, radius: ZOMBIE_RADIUS },
+  runner: { hp: 0.55, speed: 1.75, damage: 0.6, radius: 11 },
+  brute: { hp: 3.2, speed: 0.62, damage: 2.2, radius: 18 },
+};
+
+/** Composition des vagues : coureurs à partir de la nuit 2, brutes à partir de la nuit 3. */
+function pickKind(night: number): ZombieKind {
+  const r = Math.random();
+  if (night >= 3 && r < 0.12 + Math.min(0.1, night * 0.01)) return 'brute';
+  if (night >= 2 && r < 0.4) return 'runner';
+  return 'walker';
+}
+
+export function spawnZombie(state: GameState, night: number, at?: { x: number; y: number }, kind: ZombieKind = pickKind(night)) {
   const wave = zombieWave(night, state.world);
-  const { x, y } = spawnPoint(state);
+  const k = KIND_STATS[kind];
+  const { x, y } = at ?? spawnPoint(state);
+  const hp = Math.round(wave.hp * k.hp);
   state.zombies.push({
     id: nextId(state),
     x,
     y,
     vx: 0,
     vy: 0,
-    radius: ZOMBIE_RADIUS,
-    hp: wave.hp,
-    maxHp: wave.hp,
-    speed: wave.speed * fxRandom(0.9, 1.1),
-    damage: wave.damage,
+    radius: k.radius,
+    hp,
+    maxHp: hp,
+    speed: wave.speed * k.speed * fxRandom(0.9, 1.1),
+    damage: Math.round(wave.damage * k.damage),
     attackCooldown: ZOMBIE_ATTACK_INTERVAL,
     lunge: 0,
     hitFlash: 0,
@@ -109,6 +131,10 @@ export function spawnZombie(state: GameState, night: number) {
     golden: false,
     unitTargetId: null,
     hunter: false,
+    kind,
+    slow: 0,
+    poison: 0,
+    poisonTime: 0,
   });
 }
 
@@ -142,11 +168,15 @@ export function updateZombies(state: GameState, dt: number) {
     }
     const chaseSoldier = soldier && soldierDist < heroDist;
     const target = chaseSoldier ? soldier : heroDist < ZOMBIE_AGGRO_RANGE || (z.hunter && !hero.dead) ? hero : house;
+    z.poisonTime = Math.max(0, z.poisonTime - dt);
     if (target) {
       const d = dist(z.x, z.y, target.x, target.y) || 1;
-      z.vx += (((target.x - z.x) / d) * z.speed - z.vx) * k;
-      z.vy += (((target.y - z.y) / d) * z.speed - z.vy) * k;
+      const speed = z.speed * (1 - z.slow);
+      z.vx += (((target.x - z.x) / d) * speed - z.vx) * k;
+      z.vy += (((target.y - z.y) / d) * speed - z.vy) * k;
     }
+    // Le ralentissement (givre, pièges) est réappliqué à chaque image par sa source.
+    z.slow = 0;
     z.x += z.vx * dt;
     z.y += z.vy * dt;
 
@@ -168,11 +198,29 @@ export function updateZombies(state: GameState, dt: number) {
       }
     }
 
-    for (const tree of state.trees) {
-      if (tree.state === 'standing') pushOut(z, z.radius, tree.x, tree.y, tree.radius);
-    }
+    forTreesNear(state.trees, z.x, z.y, (tree) => {
+      if (tree.state !== 'standing' || !pushOut(z, z.radius, tree.x, tree.y, tree.radius)) return;
+      if (z.boss || z.kind === 'brute') {
+        // Les boss et les brutes renversent les arbres sur leur passage.
+        tree.state = 'falling';
+        tree.timer = 0;
+        tree.claimedBy = null;
+        tree.golden = false;
+        tree.fallDir = tree.x >= z.x ? 1 : -1;
+        spawnBurst(state, tree.x, tree.y, 40, 8, 'leaf', FX_COLORS.leaves, 1);
+        return;
+      }
+      // Les autres contournent l'arbre au lieu de rester coincés.
+      const dx = z.x - tree.x;
+      const dy = z.y - tree.y;
+      const d = Math.hypot(dx, dy) || 1;
+      const side = z.id % 2 === 0 ? 1 : -1;
+      z.x += (-dy / d) * side * z.speed * dt * 0.8;
+      z.y += (dx / d) * side * z.speed * dt * 0.8;
+    });
     let blocker: Structure | null = null;
     for (const s of state.structures) {
+      if (s.kind === 'trap') continue;
       if (pushOut(z, z.radius, s.x, s.y, s.radius) && !blocker) blocker = s;
       else if (!blocker && dist(z.x, z.y, s.x, s.y) < z.radius + s.radius + 2) blocker = s;
     }

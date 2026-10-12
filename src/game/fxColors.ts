@@ -11,6 +11,7 @@ export const FX_COLORS = {
   textHeal: '#7BD35A',
   textBoss: '#FFB020',
   textCrit: '#FFE14D',
+  textFood: '#FF8A7A',
   fire: ['#FFB020', '#FF6B2B', '#FFE14D', '#FF3B3B'],
   gem: '#5BE0FF',
 } as const;

@@ -26,8 +26,11 @@ function bot(state: GameState): PlayerInput {
     return moveTo(state, state.base.x, state.base.y + 150);
   }
   if (state.chests.length) return moveTo(state, state.chests[0].x, state.chests[0].y);
-  const pad = [...state.pads].sort((a, b) => a.cost - a.paid - (b.cost - b.paid))[0];
-  if (pad && state.inventory.wood >= pad.cost - pad.paid) return moveTo(state, pad.x, pad.y);
+  const affordable = state.pads.filter(
+    (p) => state.inventory.wood >= p.cost - p.paid && state.inventory.food >= p.foodCost - p.foodPaid,
+  );
+  const pad = affordable.sort((a, b) => a.cost - a.paid - (b.cost - b.paid))[0];
+  if (pad) return moveTo(state, pad.x, pad.y);
   const tree = state.trees
     .filter((t) => t.state === 'standing')
     .sort((a, b) => Math.hypot(a.x - hero.x, a.y - hero.y) - Math.hypot(b.x - hero.x, b.y - hero.y))[0];
@@ -35,6 +38,9 @@ function bot(state: GameState): PlayerInput {
 }
 
 const state = createGame();
+let maxZombies = 0;
+let simMs = 0;
+let steps = 0;
 const counts: Record<string, number> = {};
 const log: string[] = [];
 for (let i = 0; i < (MINUTES * 60) / DT && state.status === 'playing'; i++) {
@@ -47,7 +53,16 @@ for (let i = 0; i < (MINUTES * 60) / DT && state.status === 'playing'; i++) {
     log.push(`${state.time.toFixed(0).padStart(4)}s arme trouvée : ${state.weaponOffer} (prise)`);
     resolveWeaponOffer(state, true);
   }
+  const t0 = performance.now();
   step(state, bot(state), DT);
+  simMs += performance.now() - t0;
+  steps++;
+  maxZombies = Math.max(maxZombies, state.zombies.length);
+  if (process.env.DUMP && state.cycle.phase === 'night' && state.cycle.timer > 150) {
+    console.log('BLOQUÉ', JSON.stringify(state.zombies.map((z) => ({ dx: Math.round(z.x - state.base.x), dy: Math.round(z.y - state.base.y), kind: z.kind, golden: z.golden, hunter: z.hunter, boss: z.boss, size: z.bossSize, hp: z.hp, speed: z.speed, vx: Math.round(z.vx), vy: Math.round(z.vy), slow: z.slow }))));
+    console.log('héros', Math.round(state.hero.x - state.base.x), Math.round(state.hero.y - state.base.y), 'structures proches', JSON.stringify(state.structures.filter((st) => state.zombies.some((z) => Math.hypot(z.x - st.x, z.y - st.y) < 80)).map((st) => ({ kind: st.kind, slot: st.slot, hp: st.hp }))));
+    break;
+  }
   for (const ev of state.events) {
     counts[ev.type] = (counts[ev.type] ?? 0) + 1;
     const time = state.time.toFixed(0).padStart(4);
@@ -63,5 +78,12 @@ for (let i = 0; i < (MINUTES * 60) / DT && state.status === 'playing'; i++) {
 }
 console.log(log.join('\n'));
 console.log('\nÉvénements :', counts);
+console.log('Perf : zombies max', maxZombies, '| simulation', (simMs / steps).toFixed(2), 'ms par image | missions', state.questsDone, '| nourriture', state.inventory.food, '| murs niv.', state.wallLevel, '| tours', state.structures.filter((s) => s.kind === 'tower').map((s) => s.level).join(','));
 console.log('Atouts :', JSON.stringify(state.perks), '| arme', JSON.stringify(state.hero.weapon), '| unités', state.units.length, '| bois récolté', state.stats.woodGathered);
 console.log('Fin :', state.status, '| monde', state.world, '| équipement', JSON.stringify(state.equipment), '| niveau', state.hero.level, '| boss', state.bossesKilled, '| temps', state.time.toFixed(0), 's | nuits', state.cycle.night, '| zombies tués', state.stats.zombiesKilled, '| bâtiments', state.structures.length);
+
+if (process.env.DUMP) {
+  console.log('night', state.cycle.night, 'world', state.world, 'spawnTimer', state.cycle.spawnTimer, 'angles', JSON.stringify(state.cycle.hordeAngles), 'phase', state.cycle.phase, 'toSpawn', state.cycle.toSpawn, 'boss', state.cycle.bossSpawned, 'zombies', state.zombies.length);
+  console.log(state.zombies.slice(0, 6).map((z) => ({ dx: Math.round(z.x - state.base.x), dy: Math.round(z.y - state.base.y), kind: z.kind, hunter: z.hunter, boss: z.boss, hp: z.hp, vx: Math.round(z.vx), vy: Math.round(z.vy) })));
+  console.log('héros', Math.round(state.hero.x - state.base.x), Math.round(state.hero.y - state.base.y), 'mort', state.hero.dead);
+}

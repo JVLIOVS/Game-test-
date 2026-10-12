@@ -7,12 +7,18 @@ import { dist, gain, nextId, pushOut } from './common';
 import { damageZombie } from './combat';
 import { spawnBurst, spawnText } from './effects';
 import { hitTree } from './trees';
+import { hitAnimal } from './animals';
+import { forTreesNear } from '../world/grid';
 
 // Habitants du camp, produits par les bâtiments :
 // - ouvriers (cabane de bûcherons) : coupent des arbres et rapportent le bois ;
 // - soldats (caserne) : gardent la base et attaquent les zombies qui approchent.
 
 const WORKERS_PER_LEVEL = [0, 2, 3, 5];
+const HUNTERS_PER_LEVEL = [0, 2, 3, 4];
+const HUNTER_SPEED = 130;
+const HUNTER_RANGE = 150;
+const HUNTER_SHOT_INTERVAL = 1.2;
 const SOLDIERS_PER_LEVEL = [0, 2, 4, 6];
 const WORKER_SPEED = 115;
 const WORKER_CARRY = 4;
@@ -27,6 +33,7 @@ const UNIT_RADIUS = 10;
 
 export const maxSoldiers = (state: GameState) => SOLDIERS_PER_LEVEL[Math.min(STRUCTURE_MAX_LEVEL, structureLevel(state, 'barracks'))];
 export const maxWorkers = (state: GameState) => WORKERS_PER_LEVEL[Math.min(STRUCTURE_MAX_LEVEL, structureLevel(state, 'lumber'))];
+export const maxHunters = (state: GameState) => HUNTERS_PER_LEVEL[Math.min(STRUCTURE_MAX_LEVEL, structureLevel(state, 'lodge'))];
 const soldierDamage = (state: GameState) => 9 + 4 * structureLevel(state, 'barracks') + 3 * state.world;
 const soldierHp = (state: GameState) => 50 + 25 * structureLevel(state, 'barracks') + 20 * state.world;
 
@@ -46,7 +53,7 @@ function spawnUnit(state: GameState, kind: Unit['kind'], fromSlot: string) {
     vy: 0,
     hp,
     maxHp: hp,
-    state: kind === 'worker' ? 'toTree' : 'idle',
+    state: kind === 'soldier' ? 'idle' : 'toTree',
     targetId: null,
     carry: 0,
     timer: 0,
@@ -147,6 +154,71 @@ function updateWorker(state: GameState, u: Unit, dt: number) {
   }
 }
 
+/** Chasseur : traque un animal, le tire à l'arc et rapporte la viande au camp. */
+function updateHunter(state: GameState, u: Unit, dt: number) {
+  const house = getHouse(state);
+  if (!house) return;
+  const release = () => {
+    const a = state.animals.find((an) => an.id === u.targetId);
+    if (a && a.claimedBy === u.id) a.claimedBy = null;
+    u.targetId = null;
+  };
+  if (state.cycle.phase === 'night' && u.state !== 'hide') {
+    release();
+    u.state = 'hide';
+  }
+  if (u.state === 'hide' || u.state === 'return') {
+    const d = moveToward(u, house.x + 20, house.y + house.radius + 4, HUNTER_SPEED * (u.state === 'hide' ? 1.3 : 1), dt);
+    if (d < 14 && u.carry > 0) {
+      gain(state, 'food', u.carry, house.x, house.y - 70);
+      u.carry = 0;
+      if (u.state === 'return') u.state = 'toTree';
+    }
+    if (u.state === 'hide' && state.cycle.phase === 'day') u.state = 'toTree';
+    return;
+  }
+  let prey = u.targetId !== null ? state.animals.find((a) => a.id === u.targetId) : undefined;
+  if (!prey) {
+    let bestD = Infinity;
+    for (const a of state.animals) {
+      if (a.claimedBy !== null && a.claimedBy !== u.id) continue;
+      const d = dist(a.x, a.y, u.x, u.y);
+      if (d < bestD) {
+        bestD = d;
+        prey = a;
+      }
+    }
+    if (!prey) {
+      moveToward(u, house.x + 60, house.y + 80, HUNTER_SPEED * 0.5, dt);
+      return;
+    }
+    prey.claimedBy = u.id;
+    u.targetId = prey.id;
+  }
+  const d = dist(u.x, u.y, prey.x, prey.y);
+  u.timer = Math.max(0, u.timer - dt);
+  if (d > HUNTER_RANGE) {
+    moveToward(u, prey.x, prey.y, HUNTER_SPEED, dt);
+    return;
+  }
+  u.vx *= 0.85;
+  u.vy *= 0.85;
+  u.walkTime = 0;
+  u.state = 'chop';
+  u.dirX = prey.x >= u.x ? 1 : -1;
+  if (u.timer <= 0) {
+    u.timer = HUNTER_SHOT_INTERVAL;
+    const angle = Math.atan2(prey.y - u.y, prey.x - u.x);
+    state.slashes.push({ x: u.x, y: u.y - 20, angle, kind: 'spear', life: 0.15, maxLife: 0.15, size: d });
+    const food = hitAnimal(state, prey, false);
+    if (food > 0) {
+      u.carry += food;
+      u.targetId = null;
+      u.state = 'return';
+    }
+  }
+}
+
 function updateSoldier(state: GameState, u: Unit, dt: number) {
   const { base } = state;
   // Cible : le zombie le plus proche de la base, s'il est dans la zone de garde.
@@ -211,16 +283,19 @@ export function updateUnits(state: GameState, dt: number) {
   }
   const workers = state.units.filter((u) => u.kind === 'worker').length;
   if (workers < maxWorkers(state)) spawnUnit(state, 'worker', 'lumber');
+  const hunters = state.units.filter((u) => u.kind === 'hunter').length;
+  if (hunters < maxHunters(state)) spawnUnit(state, 'hunter', 'lodge');
 
   for (const u of [...state.units]) {
     u.hitFlash = Math.max(0, u.hitFlash - dt * 5);
     if (u.kind === 'worker') updateWorker(state, u, dt);
+    else if (u.kind === 'hunter') updateHunter(state, u, dt);
     else updateSoldier(state, u, dt);
-    for (const tree of state.trees) {
+    forTreesNear(state.trees, u.x, u.y, (tree) => {
       if (tree.state === 'standing' && tree.id !== u.targetId) pushOut(u, UNIT_RADIUS, tree.x, tree.y, tree.radius);
-    }
+    });
     for (const s of state.structures) {
-      if (s.kind !== 'wall' && s.kind !== 'house') pushOut(u, UNIT_RADIUS, s.x, s.y, s.radius);
+      if (s.kind !== 'wall' && s.kind !== 'house' && s.kind !== 'trap') pushOut(u, UNIT_RADIUS, s.x, s.y, s.radius);
     }
   }
 }

@@ -13,6 +13,8 @@ import { updateWeapons } from './systems/weapons';
 import { updateSlashes } from './systems/combat';
 import { updateChests, updateHappenings } from './systems/happenings';
 import { updateUnits } from './systems/units';
+import { updateAnimals } from './systems/animals';
+import { updateQuests } from './systems/quests';
 import type { GameState, PlayerInput } from './types';
 import { LAYOUT } from './world/layout';
 import { MAP, generateMap } from './world/map';
@@ -37,7 +39,12 @@ export function createGame(): GameState {
     gems: [],
     chests: [],
     perks: emptyPerks(),
-    weaponTimers: { bow: 0, bomb: 0, lightning: 0, orbitAngle: 0 },
+    weaponTimers: { bow: 0, volley: 0, bomb: 0, meteor: 0, lightning: 0, orbitAngle: 0, deploy: 0, nova: 0, poison: 0, tick: 0 },
+    hazards: [],
+    skyDrops: [],
+    pets: [],
+    turrets: [],
+    novas: [],
     choice: null,
     pendingLevelUps: 0,
     bossesKilled: 0,
@@ -46,6 +53,11 @@ export function createGame(): GameState {
     roundInWorld: 0,
     equipment: { sword: 0, shield: 0, armor: 0 },
     units: [],
+    quests: [],
+    questsDone: 0,
+    animals: [],
+    animalTimer: 0,
+    wallLevel: 1,
     slashes: [],
     happeningTimer: 30,
     weaponOffer: null,
@@ -75,7 +87,7 @@ export function createGame(): GameState {
       comboSide: 1,
     },
     inventory: { wood: 0, stone: 0, food: 0 },
-    cycle: { phase: 'day', timer: FIRST_DAY_LENGTH, night: 0, toSpawn: 0, spawnTimer: 0, bossSpawned: false, darkness: 0 },
+    cycle: { phase: 'day', timer: FIRST_DAY_LENGTH, night: 0, toSpawn: 0, spawnTimer: 0, bossSpawned: false, hordeAngles: [], darkness: 0 },
     particles: [],
     texts: [],
     flyingLogs: [],
@@ -105,9 +117,11 @@ export function step(state: GameState, input: PlayerInput, dt: number) {
     updateWeapons(state, dt);
     updateGems(state, dt);
     updateUnits(state, dt);
+    updateAnimals(state, dt);
     updateHappenings(state, dt);
     updateChests(state, dt);
     updateSlashes(state, dt);
+    updateQuests(state);
     updateStructures(state, dt);
   }
   updateTrees(state, dt);

@@ -37,7 +37,7 @@ export function updateHeroMovement(state: GameState, input: PlayerInput, dt: num
   }
   // Le héros traverse sa propre palissade, mais pas les bâtiments.
   for (const s of state.structures) {
-    if (s.kind !== 'wall') pushOut(hero, hero.radius, s.x, s.y, s.radius);
+    if (s.kind !== 'wall' && s.kind !== 'trap') pushOut(hero, hero.radius, s.x, s.y, s.radius);
   }
 
   const { width, height } = state.map;

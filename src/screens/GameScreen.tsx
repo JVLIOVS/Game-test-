@@ -15,7 +15,7 @@ import { drawWorld } from '../render/drawWorld';
 import { Banner, type BannerData } from '../ui/Banner';
 import { GameOver } from '../ui/GameOver';
 import { Hint } from '../ui/Hint';
-import { Hud } from '../ui/Hud';
+import { Hud, Quests } from '../ui/Hud';
 import { LevelUp } from '../ui/LevelUp';
 import { WeaponOffer } from '../ui/WeaponOffer';
 import { readHud, sameHud, type HudState } from '../ui/hudState';
@@ -96,6 +96,18 @@ export function GameScreen() {
     let last = 0;
     let raf = 0;
     let lastFeedHaptic = 0;
+    let lastHitHaptic = 0;
+    let lastHeavyHaptic = 0;
+    // Avec des centaines de zombies, on espace les vibrations pour ne pas saturer.
+    const throttled = (kind: 'light' | 'medium', now: number) => {
+      if (kind === 'light' && now - lastHitHaptic > 70) {
+        lastHitHaptic = now;
+        haptics.light();
+      } else if (kind === 'medium' && now - lastHeavyHaptic > 120) {
+        lastHeavyHaptic = now;
+        haptics.medium();
+      }
+    };
     let currentHud = readHud(gameRef.current);
     const progress = { moved: false };
 
@@ -103,12 +115,17 @@ export function GameScreen() {
       switch (ev.type) {
         case 'treeHit':
         case 'zombieHit':
-          haptics.light();
+          throttled('light', now);
           break;
         case 'treeFelled':
         case 'zombieKilled':
         case 'heroHurt':
-          haptics.medium();
+        case 'animalKilled':
+          throttled('medium', now);
+          break;
+        case 'questDone':
+          haptics.success();
+          showBanner({ title: t('banner.quest'), sub: t(`quest.${ev.kind}`, { n: '' }).replace(/\s+/g, ' ').trim(), tone: 'good' });
           break;
         case 'padFed':
           if (now - lastFeedHaptic > 110) {
@@ -121,9 +138,11 @@ export function GameScreen() {
           const a = ev.action;
           if (a.type === 'upgradeHouse') showBanner({ title: t('banner.house', { level: a.level }), tone: 'good' });
           else if (a.type === 'forge') showBanner({ title: t('banner.axe'), sub: t('pad.forge', { level: a.level }), tone: 'good' });
-          else if (a.type === 'upgradeStructure')
-            showBanner({ title: t('banner.built'), sub: t(a.slot === 'barracks' ? 'pad.barracksUp' : 'pad.lumberUp', { level: a.level }), tone: 'good' });
-          else showBanner({ title: t('banner.built'), sub: t(`pad.${a.kind}`), tone: 'good' });
+          else if (a.type === 'upgradeWalls') showBanner({ title: t('banner.walls'), sub: t('pad.walls', { level: a.level }), tone: 'good' });
+          else if (a.type === 'upgradeStructure') {
+            const key = a.slot.startsWith('tower') ? 'pad.towerUp' : a.slot === 'barracks' ? 'pad.barracksUp' : a.slot === 'lodge' ? 'pad.lodgeUp' : 'pad.lumberUp';
+            showBanner({ title: t('banner.built'), sub: t(key, { level: a.level }), tone: 'good' });
+          } else showBanner({ title: t('banner.built'), sub: t(`pad.${a.kind}`), tone: 'good' });
           break;
         }
         case 'nightStart':
@@ -162,7 +181,7 @@ export function GameScreen() {
           haptics.success();
           break;
         case 'crit':
-          haptics.medium();
+          throttled('medium', now);
           break;
         case 'worldAdvance':
           haptics.heavy();
@@ -180,7 +199,7 @@ export function GameScreen() {
           break;
         case 'bombExploded':
         case 'lightning':
-          haptics.medium();
+          throttled('medium', now);
           break;
         case 'heroDied':
           haptics.heavy();
@@ -286,6 +305,7 @@ export function GameScreen() {
         </Canvas>
       </View>
       <Hud hud={hud} />
+      <Quests hud={hud} />
       <Hint text={hud.heroDead ? t('respawn', { n: hud.respawnIn }) : hint ? t(hint) : null} />
       <Banner banner={banner} />
       {hud.weaponOffer !== '' && hud.status === 'playing' && (

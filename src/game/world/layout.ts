@@ -37,6 +37,21 @@ export const LAYOUT = {
   barracksUpgradePad: { x: 250, y: -175 },
   lumber: { x: -250, y: 250 },
   lumberUpgradePad: { x: -250, y: 325 },
+  lodge: { x: 250, y: 250 },
+  lodgeUpgradePad: { x: 250, y: 325 },
+  wallUpgradePad: { x: 0, y: -190 },
+  /** Pièges à pointes, à l'extérieur de l'enceinte. */
+  traps: [
+    { slot: 'trap-N', x: 0, y: -420 },
+    { slot: 'trap-E', x: 420, y: 0 },
+    { slot: 'trap-S', x: 0, y: 420 },
+    { slot: 'trap-W', x: -420, y: 0 },
+  ],
+  /** Catapultes : longue portée, tirent par-dessus la palissade. */
+  catapults: [
+    { slot: 'catapult-1', x: -250, y: -250, minWorld: 0 },
+    { slot: 'catapult-2', x: 330, y: -120, minWorld: 1 },
+  ],
   /** Emplacements de tourelles, débloqués un par un (baraque, mondes, atout Ingénieur). */
   towers: [
     { slot: 'tower-1', x: 130, y: -85 },
