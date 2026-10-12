@@ -234,7 +234,7 @@ export function drawMainWeapon(canvas: SkCanvas, type: WeaponType, tier: number,
   canvas.restore();
 }
 
-export function drawHero(canvas: SkCanvas, hero: Hero, time: number, gear: Record<EquipSlot, number>, shirt: string = C.shirt) {
+export function drawHero(canvas: SkCanvas, hero: Hero, time: number, gear: Record<EquipSlot, number>, shirt: string = C.shirt, armed = true) {
   const t = tintFor(hero.hurtFlash);
   const walking = hero.walkTime > 0;
   const phase = Math.sin(hero.walkTime * 16);
@@ -271,6 +271,24 @@ export function drawHero(canvas: SkCanvas, hero: Hero, time: number, gear: Recor
   canvas.drawCircle(5.6, -40.5, 2.4, fill(C.outline));
   canvas.drawCircle(13.6, -40.5, 2.4, fill(C.outline));
   canvas.drawCircle(1, -35, 3, fill('rgba(255,110,110,0.45)'));
+
+  if (!armed) {
+    // Sans arme : une lanterne à la main, qui se balance en marchant.
+    const swing = walking ? phase * 10 : Math.sin(time * 2) * 4;
+    canvas.save();
+    canvas.translate(12, -20);
+    canvas.rotate(swing, 0, 0);
+    canvas.drawCircle(0, 16, 15, fill('rgba(255,190,80,0.22)'));
+    canvas.drawRect(rect(-1, 0, 2, 7), fill(C.outline));
+    canvas.drawRRect(rrect(-6.5, 6, 13, 15, 4), fill(C.outline));
+    canvas.drawRRect(rrect(-4.5, 8, 9, 11, 3), fill('#FFD25A'));
+    canvas.drawCircle(0, 13.5, 2.6 + Math.sin(time * 12) * 0.6, fill('#FFF4C2'));
+    canvas.drawRect(rect(-6, 5, 12, 3), fill('#6E5A48'));
+    outlinedCircle(canvas, 0, 0, 4.5, t(C.skin));
+    canvas.restore();
+    canvas.restore();
+    return;
+  }
 
   // La hache sert aux arbres, l'arme principale au combat. Chaque arme a son mouvement.
   const chopping = hero.target?.kind === 'tree';

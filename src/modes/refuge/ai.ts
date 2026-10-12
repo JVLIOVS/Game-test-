@@ -18,15 +18,14 @@ function chooseRoom(state: RefugeState, s: Survivor) {
   const aimed = new Set(state.survivors.filter((o) => o !== s).map((o) => aimedRoom(state, o)?.id));
   const free = state.rooms.filter((r) => r.owner === null && !aimed.has(r.id));
   if (!free.length) return;
-  free.sort((a, b) => Math.hypot(s.x - roomCenter(a).x, s.y - roomCenter(a).y) - Math.hypot(s.x - roomCenter(b).x, s.y - roomCenter(b).y));
-  // Le plus souvent le plus proche, parfois un autre : les robots ne jouent pas tous pareil.
-  const room = free[Math.random() < 0.6 ? 0 : Math.floor(Math.random() * Math.min(3, free.length))];
+  // Choix au hasard : d'une partie à l'autre, ce ne sont jamais les mêmes refuges qui restent libres.
+  const room = free[Math.floor(Math.random() * free.length)];
   s.path = [doorOutside(room, 50), roomCenter(room)];
 }
 
 function score(state: RefugeState, s: Survivor, pad: RefugePad): number {
   const room = state.rooms[s.roomId!];
-  const sinceSiege = state.time - 20;
+  const sinceSiege = state.time - state.siegeStart;
   const underAttack = state.demon.targetRoom === room.id;
   const hpRatio = room.door.hp / room.door.maxHp;
   switch (pad.kind) {
@@ -47,6 +46,7 @@ export function botThink(state: RefugeState, s: Survivor, dt: number) {
   s.thinkTimer -= dt;
 
   if (s.roomId === null) {
+    if (s.thinkTimer > 0) return; // temps de réaction au top départ
     const aimed = aimedRoom(state, s);
     if (!aimed || aimed.owner !== null) chooseRoom(state, s);
     const next = s.path[0];

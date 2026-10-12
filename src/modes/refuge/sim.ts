@@ -4,6 +4,7 @@ import type { PlayerInput, Zombie, ZombieKind } from '../../game/types';
 import {
   ARENA_H,
   ARENA_W,
+  ARRIVAL_TIME,
   BUY_HOLD,
   CHOOSE_TIME,
   DEMON_ARMOR,
@@ -18,6 +19,7 @@ import {
   DOOR_HP,
   GEN_COST,
   GEN_INCOME,
+  INTRO_TIME,
   OFF_GEN_RATIO,
   PAD_RADIUS,
   REPAIR_COOLDOWN,
@@ -29,6 +31,7 @@ import {
   SURVIVOR_SPEED,
   TURRET,
   TURRET_COST,
+  TURRET_GUARD,
   WAVE_INTERVAL,
   ZOMBIE_BOUNTY,
   demonStats,
@@ -77,13 +80,14 @@ function pushOutRect(m: { x: number; y: number }, r: number, rc: Rect) {
 export function createRefuge(): RefugeState {
   const rooms = createRooms();
   const survivors: Survivor[] = Array.from({ length: 6 }, (_, i) => {
-    const a = (i / 6) * Math.PI * 2;
+    // Tout le monde part du centre, serré autour de l'autel encore scellé.
+    const a = (i / 6) * Math.PI * 2 + Math.PI / 2;
     return {
       id: i,
       name: i === 0 ? 'Toi' : BOT_NAMES[i - 1],
       isPlayer: i === 0,
-      x: CENTER.x + Math.cos(a) * 60,
-      y: CENTER.y + Math.sin(a) * 40,
+      x: CENTER.x + Math.cos(a) * 84,
+      y: CENTER.y + Math.sin(a) * 84,
       vx: 0,
       vy: 0,
       dirX: 1,
@@ -94,7 +98,8 @@ export function createRefuge(): RefugeState {
       shirt: SHIRTS[i],
       goal: null,
       path: [],
-      thinkTimer: 0.5 + Math.random(),
+      // Petit temps de réaction après le top départ, différent pour chaque robot.
+      thinkTimer: 0.15 + Math.random() * 0.45,
       hurtFlash: 0,
       eliminatedAt: 0,
     };
@@ -118,11 +123,12 @@ export function createRefuge(): RefugeState {
     lunge: 0,
     walkTime: 0,
     dirX: 1,
+    rise: 0,
   };
   return {
     time: 0,
-    phase: 'choose',
-    phaseTimer: CHOOSE_TIME,
+    phase: 'intro',
+    phaseTimer: INTRO_TIME,
     width: ARENA_W,
     height: ARENA_H,
     rooms,
@@ -133,6 +139,8 @@ export function createRefuge(): RefugeState {
     wave: 0,
     waveTimer: 25,
     zombiesKilled: 0,
+    zombieRoom: {},
+    siegeStart: 0,
     eliminations: 0,
     result: null,
     particles: [],
@@ -260,10 +268,10 @@ function updateSurvivors(state: RefugeState, input: PlayerInput, dt: number) {
   }
 }
 
-/** Fin du choix : ceux qui n'ont pas de refuge sont placés dans le plus proche libre. */
-function startSiege(state: RefugeState) {
-  state.phase = 'siege';
-  state.phaseTimer = SIEGE_TIME;
+/** Fin du choix : ceux qui n'ont pas de refuge sont placés dans le plus proche libre, puis le Démon surgit. */
+function startArrival(state: RefugeState) {
+  state.phase = 'arrival';
+  state.phaseTimer = ARRIVAL_TIME;
   for (const s of state.survivors) {
     if (s.roomId !== null) continue;
     const free = state.rooms
@@ -276,6 +284,30 @@ function startSiege(state: RefugeState) {
     s.x = c.x;
     s.y = c.y;
   }
+  state.events.push({ type: 'phase', phase: 'arrival' });
+}
+
+/** Mini-cinématique : le sol tremble, l'autel s'ouvre et le Démon en sort. */
+function updateArrival(state: RefugeState, dt: number) {
+  const d = state.demon;
+  const p = 1 - state.phaseTimer / ARRIVAL_TIME;
+  // Il reste sous terre la première seconde, puis s'élève.
+  d.rise = Math.max(0, Math.min(1, (p - 0.3) / 0.55));
+  state.trauma = Math.max(state.trauma, p < 0.85 ? 0.25 + p * 0.3 : 0);
+  if (Math.random() < dt * 30) {
+    const a = Math.random() * Math.PI * 2;
+    spawnBurst(state, CENTER.x + Math.cos(a) * 50, CENTER.y + Math.sin(a) * 30, 0, 1, 'goo', ['#C2352B', '#FF7A3D', '#3B2A5C'], 1.2);
+  }
+  if (state.phaseTimer <= 0) startSiege(state);
+}
+
+function startSiege(state: RefugeState) {
+  state.phase = 'siege';
+  state.phaseTimer = SIEGE_TIME;
+  state.siegeStart = state.time;
+  state.demon.rise = 1;
+  spawnBurst(state, CENTER.x, CENTER.y, 40, 40, 'goo', ['#C2352B', '#FF7A3D', '#FFB020'], 2);
+  addTrauma(state, 0.9);
   state.events.push({ type: 'phase', phase: 'siege' });
 }
 
@@ -330,17 +362,33 @@ function spawnWave(state: RefugeState) {
   const w = state.wave;
   const boss = w % 4 === 0;
   const n = waveSize(w);
-  for (let i = 0; i < n; i++) {
-    const left = i % 2 === 0;
+  // Chaque refuge habité reçoit sa part de la vague, dans un ordre mélangé.
+  const targets = occupiedRooms(state).map((r) => r.id);
+  if (!targets.length) return;
+  for (let i = targets.length - 1; i > 0; i--) {
+    const j = Math.floor(Math.random() * (i + 1));
+    [targets[i], targets[j]] = [targets[j], targets[i]];
+  }
+  const perRoom = Math.max(2, Math.round(n / 4));
+  for (let i = 0; i < perRoom * targets.length; i++) {
+    const roomId = targets[i % targets.length];
+    // Ils arrivent par le côté de l'arène le plus proche de leur cible.
+    const left = state.rooms[roomId].door.x < CENTER.x;
     const x = left ? 30 : state.width - 30;
     const y = CENTER.y + (Math.random() - 0.5) * 300;
     const r = Math.random();
     const kind: ZombieKind = w >= 3 && r < 0.15 ? 'brute' : w >= 2 && r < 0.45 ? 'runner' : 'walker';
     const hpMult = kind === 'brute' ? 3 : kind === 'runner' ? 0.6 : 1;
     const speedMult = kind === 'brute' ? 0.65 : kind === 'runner' ? 1.7 : 1;
-    state.zombies.push(makeZombie(state, x, y, kind, Math.round(zombieHp(w) * hpMult), Math.round(zombieDamage(w) * (kind === 'brute' ? 2 : 1)), 60 * speedMult));
+    const z = makeZombie(state, x, y, kind, Math.round(zombieHp(w) * hpMult), Math.round(zombieDamage(w) * (kind === 'brute' ? 2 : 1)), 60 * speedMult);
+    state.zombies.push(z);
+    state.zombieRoom[z.id] = roomId;
   }
-  if (boss) state.zombies.push(makeZombie(state, CENTER.x, 30, 'brute', zombieHp(w) * 14, zombieDamage(w) * 4, 50, true));
+  if (boss) {
+    const z = makeZombie(state, CENTER.x, CENTER.y, 'brute', zombieHp(w) * 14, zombieDamage(w) * 4, 50, true);
+    state.zombies.push(z);
+    state.zombieRoom[z.id] = targets[0];
+  }
   state.events.push({ type: 'wave', wave: w, boss });
 }
 
@@ -366,6 +414,7 @@ function damageZombie(state: RefugeState, z: Zombie, amount: number, room: Room 
   const i = state.zombies.indexOf(z);
   if (i < 0) return;
   state.zombies.splice(i, 1);
+  delete state.zombieRoom[z.id];
   state.zombiesKilled++;
   spawnBurst(state, z.x, z.y, 15, z.boss ? 30 : 10, 'goo', FX_COLORS.goo, z.boss ? 1.8 : 1.1);
   // Prime en or pour le refuge dont la tourelle a tué le zombie.
@@ -383,7 +432,8 @@ function damageDemon(state: RefugeState, amount: number) {
   if (d.hp <= 0) return;
   amount = Math.max(1, Math.round(amount * DEMON_ARMOR));
   d.hp -= amount;
-  d.hitFlash = 1;
+  // Seuls les gros coups le font clignoter (sinon le laser le laisserait tout blanc).
+  if (amount >= 15) d.hitFlash = 1;
   if (amount >= 10) spawnText(state, d.x, d.y - 90, `${amount}`, FX_COLORS.textBoss, { size: 0.9 });
   if (d.hp > 0) return;
   d.hp = 0;
@@ -437,7 +487,7 @@ function pickTarget(state: RefugeState): number | null {
 
 function updateDemon(state: RefugeState, dt: number) {
   const d = state.demon;
-  d.hitFlash = Math.max(0, d.hitFlash - dt * 5);
+  d.hitFlash = Math.max(0, d.hitFlash - dt * 8);
   d.lunge = Math.max(0, d.lunge - dt * 3);
   d.attackCooldown -= dt;
 
@@ -463,7 +513,7 @@ function updateDemon(state: RefugeState, dt: number) {
       if (dd < 20) {
         d.state = 'heal';
         d.hp = Math.min(d.maxHp, d.hp + d.maxHp * DEMON_HEAL_RATE * dt);
-        const graceOver = SIEGE_TIME - state.phaseTimer > DEMON_GRACE;
+        const graceOver = state.time - state.siegeStart > DEMON_GRACE;
         if (state.phase === 'siege' && graceOver && d.hp >= d.maxHp * DEMON_HEALED_RATIO) d.state = 'hunt';
       }
       break;
@@ -559,17 +609,14 @@ function updateZombies(state: RefugeState, dt: number) {
     z.lunge = Math.max(0, z.lunge - dt * 4);
     z.walkTime += dt;
     z.attackCooldown -= dt;
-    // Chaque zombie vise la porte habitée la plus proche.
-    let room: Room | null = null;
-    let best = Infinity;
-    for (const r of occupiedRooms(state)) {
-      const dd = dist(z.x, z.y, r.door.x, r.door.y);
-      if (dd < best) {
-        best = dd;
-        room = r;
-      }
+    // Chaque zombie garde son refuge cible ; s'il tombe, il en choisit un autre au hasard.
+    let room: Room | null = state.rooms[state.zombieRoom[z.id]] ?? null;
+    if (!room || room.owner === null || !state.survivors[room.owner].alive || room.door.broken) {
+      const open = occupiedRooms(state);
+      if (!open.length) continue;
+      room = open[Math.floor(Math.random() * open.length)];
+      state.zombieRoom[z.id] = room.id;
     }
-    if (!room) continue;
     const spot = doorOutside(room, z.radius + 4);
     const d = dist(z.x, z.y, spot.x, spot.y);
     if (d > ZOMBIE_REACH) {
@@ -616,17 +663,20 @@ function updateTurrets(state: RefugeState, dt: number) {
       if (!active || t.level === 0) continue;
       const def = TURRET[t.level]!;
       t.cooldown -= dt;
-      // Cible la plus proche : zombie ou Démon.
+      // Cible la plus proche, mais seulement devant sa propre porte (ou entrée dans le refuge).
+      const guard = doorOutside(room, 70);
+      const guards = (x: number, y: number) => dist(x, y, guard.x, guard.y) < TURRET_GUARD || insideRoom(room, x, y);
       let target: { x: number; y: number; id: number } | null = null;
       let best: number = def.range;
       for (const z of state.zombies) {
+        if (!guards(z.x, z.y)) continue;
         const d = dist(t.x, t.y, z.x, z.y);
         if (d < best) {
           best = d;
           target = { x: z.x, y: z.y, id: z.id };
         }
       }
-      if (demon.hp > 0 && dist(t.x, t.y, demon.x, demon.y) < best) target = { x: demon.x, y: demon.y, id: -1 };
+      if (demon.hp > 0 && demon.rise >= 1 && guards(demon.x, demon.y) && dist(t.x, t.y, demon.x, demon.y) < best) target = { x: demon.x, y: demon.y, id: -1 };
       if (!target) continue;
       t.angle = Math.atan2(target.y - t.y, target.x - t.x);
       if (t.level === 4) t.beamTo = { x: target.x, y: target.y - 20 };
@@ -706,7 +756,18 @@ export function stepRefuge(state: RefugeState, input: PlayerInput, dt: number) {
   state.time += dt;
   if (state.phase !== 'over') {
     state.phaseTimer -= dt;
-    if (state.phase === 'choose' && (state.phaseTimer <= 0 || state.survivors.every((s) => s.roomId !== null))) startSiege(state);
+    if (state.phase === 'intro') {
+      // Compte à rebours : tout le monde attend le top départ.
+      if (state.phaseTimer <= 0) {
+        state.phase = 'choose';
+        state.phaseTimer = CHOOSE_TIME;
+        state.events.push({ type: 'phase', phase: 'choose' });
+      }
+      updateEffects(state, dt);
+      return;
+    }
+    if (state.phase === 'choose' && (state.phaseTimer <= 0 || state.survivors.every((s) => s.roomId !== null))) startArrival(state);
+    if (state.phase === 'arrival') updateArrival(state, dt);
     if (state.phase === 'siege') {
       state.waveTimer -= dt;
       if (state.waveTimer <= 0) {
@@ -716,7 +777,7 @@ export function stepRefuge(state: RefugeState, input: PlayerInput, dt: number) {
       if (state.phaseTimer <= 0) finish(state);
     }
     updateSurvivors(state, input, dt);
-    updateDemon(state, dt);
+    if (state.phase === 'siege') updateDemon(state, dt);
     updateZombies(state, dt);
     updateTurrets(state, dt);
     if (state.phase === 'siege' && state.survivors.every((s) => !s.alive)) finish(state);

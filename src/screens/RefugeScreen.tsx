@@ -10,6 +10,7 @@ import { SIEGE_TIME, refugeSouls } from '../modes/refuge/balance';
 import { drawRefuge } from '../modes/refuge/render';
 import { createRefuge, stepRefuge } from '../modes/refuge/sim';
 import type { RefugeEvent, RefugeState } from '../modes/refuge/types';
+import { applyRefugeDebugHash } from '../platform/debug';
 import { haptics } from '../platform/haptics';
 import { Banner, type BannerData } from '../ui/Banner';
 import { FONT } from '../ui/fonts';
@@ -73,7 +74,7 @@ export function RefugeScreen({ onFinish, onRetry, onMenu }: Props) {
   const fontBig = useFont(FONT_FILE, 22);
   const fontSmall = useFont(FONT_FILE, 15);
   const picture = useSharedValue<SkPicture>(emptyPicture());
-  const stateRef = useRef(createRefuge());
+  const stateRef = useRef(applyRefugeDebugHash(createRefuge()));
   const joystick = useRef(createJoystick()).current;
   const keys = useRef(new Set<string>()).current;
   const [hud, setHud] = useState<Hud>(() => readHud(stateRef.current));
@@ -81,6 +82,9 @@ export function RefugeScreen({ onFinish, onRetry, onMenu }: Props) {
   const [souls, setSouls] = useState<number | null>(null);
   const [summary, setSummary] = useState<Hud['mine']>(null);
   const [spectating, setSpectating] = useState(false);
+  // Caméra et place prise par l'interface du haut (le jeu se centre en dessous).
+  const camera = useRef({ x: 0, y: 0, ready: false }).current;
+  const hudBottom = useRef(0);
   const bannerQueue = useRef<Omit<BannerData, 'id'>[]>([]);
   const bannerTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
   const bannerId = useRef(0);
@@ -135,8 +139,16 @@ export function RefugeScreen({ onFinish, onRetry, onMenu }: Props) {
       const mine = s.survivors[0].roomId;
       switch (ev.type) {
         case 'phase':
-          haptics.heavy();
-          showBanner({ title: t('refuge.wake'), sub: t('refuge.wakeSub'), tone: 'night' });
+          if (ev.phase === 'choose') {
+            haptics.success();
+            showBanner({ title: t('refuge.go'), tone: 'good' });
+          } else if (ev.phase === 'arrival') {
+            haptics.heavy();
+            showBanner({ title: t('refuge.wake'), tone: 'bad' });
+          } else {
+            haptics.error();
+            showBanner({ title: t('refuge.defend'), sub: t('refuge.wakeSub'), tone: 'night' });
+          }
           break;
         case 'bought':
           if (ev.survivorId === 0) haptics.success();
@@ -188,7 +200,7 @@ export function RefugeScreen({ onFinish, onRetry, onMenu }: Props) {
         setHud(next);
       }
       const canvas = recorder.beginRecording(bounds);
-      drawRefuge(canvas, s, { width, height }, fonts, joystick);
+      drawRefuge(canvas, s, { width, height, top: s.phase === 'arrival' ? 0 : hudBottom.current, cam: camera }, fonts, joystick, dt);
       const pic = recorder.finishRecordingAsPicture();
       picture.value = pic;
       if (Platform.OS === 'web') {
@@ -199,7 +211,7 @@ export function RefugeScreen({ onFinish, onRetry, onMenu }: Props) {
     };
     raf = requestAnimationFrame(frame);
     return () => cancelAnimationFrame(raf);
-  }, [width, height, fontBig, fontSmall, joystick, keys, picture, showBanner]);
+  }, [width, height, fontBig, fontSmall, joystick, keys, picture, showBanner, camera]);
 
   // Fin de partie : âmes enregistrées une seule fois.
   useEffect(() => {
@@ -233,34 +245,51 @@ export function RefugeScreen({ onFinish, onRetry, onMenu }: Props) {
         </Canvas>
       </View>
 
-      <View pointerEvents="none" style={[styles.hud, { top: insets.top + 8, left: insets.left + 12, right: insets.right + 12 }]}>
+      <View
+        pointerEvents="none"
+        onLayout={(e) => {
+          hudBottom.current = e.nativeEvent.layout.y + e.nativeEvent.layout.height;
+        }}
+        style={[styles.hud, { top: insets.top + 8, left: insets.left + 12, right: insets.right + 12 }, hud.phase === 'arrival' && styles.hidden]}
+      >
         <View style={styles.row}>
           <View style={styles.pill}>
             <Text style={styles.coin}>🪙</Text>
             <Text style={styles.gold}>{hud.gold}</Text>
           </View>
           <View style={[styles.pill, styles.pillDark]}>
-            <Text style={styles.phase}>{hud.phase === 'choose' ? `⏳ ${hud.timer}s` : `⏱ ${clock(hud.timer)}`}</Text>
+            <Text style={styles.phase}>{hud.phase === 'siege' || hud.phase === 'over' ? `⏱ ${clock(hud.timer)}` : `⏳ ${hud.phase === 'choose' ? hud.timer : 0}s`}</Text>
             <Text style={styles.alive}>{t('refuge.alive', { n: hud.alive })}</Text>
           </View>
         </View>
-        <View style={styles.bars}>
-          <View style={styles.barRow}>
-            <Text style={styles.barLabel}>😈 {t('refuge.demon', { n: hud.demonLevel })}</Text>
-            <View style={styles.barBack}>
-              <View style={[styles.barFill, { width: `${Math.round(hud.demonHp * 100)}%`, backgroundColor: '#FF5A5A' }]} />
-            </View>
-          </View>
-          {hud.phase !== 'choose' && hud.playerAlive && (
+        {(hud.phase === 'siege' || hud.phase === 'over') && (
+          <View style={styles.bars}>
             <View style={styles.barRow}>
-              <Text style={styles.barLabel}>🚪</Text>
+              <Text style={styles.barLabel}>😈 {t('refuge.demon', { n: hud.demonLevel })}</Text>
               <View style={styles.barBack}>
-                <View style={[styles.barFill, { width: `${Math.round(hud.doorHp * 100)}%`, backgroundColor: '#7BD35A' }]} />
+                <View style={[styles.barFill, { width: `${Math.round(hud.demonHp * 100)}%`, backgroundColor: '#FF5A5A' }]} />
               </View>
             </View>
-          )}
-        </View>
+            {hud.playerAlive && (
+              <View style={styles.barRow}>
+                <Text style={styles.barLabel}>🚪 {t('refuge.door')}</Text>
+                <View style={styles.barBack}>
+                  <View style={[styles.barFill, { width: `${Math.round(hud.doorHp * 100)}%`, backgroundColor: '#7BD35A' }]} />
+                </View>
+              </View>
+            )}
+          </View>
+        )}
       </View>
+
+      {hud.phase === 'intro' && (
+        <View pointerEvents="none" style={styles.countdown}>
+          <Animated.Text key={hud.timer} entering={ZoomIn.springify().damping(10)} style={styles.countdownText}>
+            {hud.timer}
+          </Animated.Text>
+          <Text style={styles.countdownSub}>{t('refuge.ready')}</Text>
+        </View>
+      )}
 
       <Hint text={hint} />
       <Banner banner={banner} />
@@ -312,11 +341,15 @@ const styles = StyleSheet.create({
   gold: { color: '#FFD25A', fontSize: 24, fontFamily: FONT.bold, minWidth: 36 },
   phase: { color: '#FFFFFF', fontSize: 18, fontFamily: FONT.bold },
   alive: { color: '#FF8A7A', fontSize: 14, fontFamily: FONT.semi },
-  bars: { gap: 4 },
+  hidden: { opacity: 0 },
+  bars: { gap: 6, backgroundColor: 'rgba(30,24,52,0.92)', borderRadius: 16, borderWidth: 3, borderColor: '#2B2238', paddingVertical: 7, paddingHorizontal: 10 },
+  countdown: { position: 'absolute', top: 0, left: 0, right: 0, bottom: 0, alignItems: 'center', justifyContent: 'center' },
+  countdownText: { fontSize: 120, color: '#FFD25A', fontFamily: FONT.bold, textShadowColor: '#2B2238', textShadowRadius: 10, textShadowOffset: { width: 0, height: 6 } },
+  countdownSub: { fontSize: 22, color: '#FFFFFF', fontFamily: FONT.bold, textShadowColor: '#2B2238', textShadowRadius: 6, textAlign: 'center', paddingHorizontal: 30 },
   barRow: { flexDirection: 'row', alignItems: 'center', gap: 8 },
-  barLabel: { color: '#FFFFFF', fontSize: 13, fontFamily: FONT.bold, minWidth: 96, textShadowColor: '#2B2238', textShadowRadius: 3 },
-  barBack: { flex: 1, maxWidth: 220, height: 12, borderRadius: 6, backgroundColor: 'rgba(43,34,56,0.85)', padding: 2 },
-  barFill: { height: 8, borderRadius: 4 },
+  barLabel: { color: '#FFFFFF', fontSize: 14, fontFamily: FONT.bold, minWidth: 104 },
+  barBack: { flex: 1, height: 14, borderRadius: 7, backgroundColor: '#15111F', padding: 2 },
+  barFill: { height: 10, borderRadius: 5 },
   backdrop: {
     position: 'absolute',
     top: 0,

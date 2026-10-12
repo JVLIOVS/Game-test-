@@ -93,10 +93,14 @@ export interface Demon {
   lunge: number;
   walkTime: number;
   dirX: 1 | -1;
+  /** Apparition : 0 = encore sous l'autel, 1 = présent. */
+  rise: number;
 }
 
+export type RefugePhase = 'intro' | 'choose' | 'arrival' | 'siege' | 'over';
+
 export type RefugeEvent =
-  | { type: 'phase'; phase: 'siege' }
+  | { type: 'phase'; phase: 'choose' | 'arrival' | 'siege' }
   | { type: 'bought'; survivorId: number; kind: PadKind; level: number }
   | { type: 'doorHit'; roomId: number }
   | { type: 'doorBroken'; roomId: number }
@@ -110,8 +114,9 @@ export type RefugeEvent =
 
 export interface RefugeState {
   time: number;
-  phase: 'choose' | 'siege' | 'over';
-  /** Temps restant de la phase (choix du refuge, puis siège). */
+  /** Compte à rebours, course aux refuges, arrivée du Démon, siège. */
+  phase: RefugePhase;
+  /** Temps restant de la phase en cours. */
   phaseTimer: number;
   width: number;
   height: number;
@@ -123,6 +128,10 @@ export interface RefugeState {
   wave: number;
   waveTimer: number;
   zombiesKilled: number;
+  /** Refuge assigné à chaque zombie (répartition équitable entre les joueurs). */
+  zombieRoom: Record<number, number>;
+  /** Instant où le siège a commencé. */
+  siegeStart: number;
   /** Nombre d'éliminations (pour le classement). */
   eliminations: number;
   result: { won: boolean; rank: number; survivedSeconds: number } | null;

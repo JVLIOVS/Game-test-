@@ -7,7 +7,10 @@ export const ROOM_H = 240;
 export const WALL = 18;
 export const DOOR_GAP = 78;
 
+/** Compte à rebours de départ, course aux refuges, puis arrivée du Démon (mini-cinématique). */
+export const INTRO_TIME = 3;
 export const CHOOSE_TIME = 20;
+export const ARRIVAL_TIME = 4.2;
 export const SIEGE_TIME = 7 * 60;
 
 export const SURVIVOR_SPEED = 200;
@@ -32,6 +35,8 @@ export const TURRET = [
   { damage: 48, interval: 1.3, shots: 1, splash: 55, range: 330 },
   { damage: 10, interval: 0.1, shots: 1, splash: 0, range: 350 },
 ] as const;
+/** Une tourelle ne défend que l'entrée de son propre refuge : aucun refuge n'est avantagé par ses voisins. */
+export const TURRET_GUARD = 210;
 export const REPAIR_COST = 30;
 export const REPAIR_RATIO = 0.35;
 export const REPAIR_COOLDOWN = 20;

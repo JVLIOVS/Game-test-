@@ -1,6 +1,7 @@
 import { Platform } from 'react-native';
 import { addStructure } from '../game/systems/build';
 import type { GameState } from '../game/types';
+import type { RefugeState } from '../modes/refuge/types';
 import { LAYOUT, WALL_SIDES, wallSegments } from '../game/world/layout';
 
 /**
@@ -63,5 +64,35 @@ export function applyDebugHash(state: GameState) {
     Object.assign(state.cycle, { phase: 'night', night: 1, timer: 0, toSpawn: 0, spawnTimer: 0, bossSpawned: false });
     state.roundInWorld = 1;
   }
+  return state;
+}
+
+/**
+ * Mode Refuges, dans le navigateur : #refuge-vitrine place directement le joueur dans un refuge
+ * avec les 4 niveaux de tourelles, une porte niv. 3, et le Démon qui attaque sa porte.
+ */
+export function applyRefugeDebugHash(state: RefugeState) {
+  if (Platform.OS !== 'web' || typeof window === 'undefined') return state;
+  if (!window.location.hash.toLowerCase().includes('vitrine')) return state;
+  const room = state.rooms[1];
+  const player = state.survivors[0];
+  room.owner = 0;
+  player.roomId = room.id;
+  player.x = room.gen.x;
+  player.y = room.gen.y + 20;
+  player.gold = 500;
+  room.turrets.forEach((t, i) => (t.level = i + 1));
+  room.door.level = 3;
+  room.door.maxHp = room.door.hp = 3300;
+  state.phase = 'siege';
+  state.phaseTimer = 400;
+  state.siegeStart = -100;
+  const d = state.demon;
+  d.rise = 1;
+  d.level = 3;
+  d.state = 'hunt';
+  d.targetRoom = room.id;
+  d.x = room.door.x + 150;
+  d.y = room.door.y + 160;
   return state;
 }
