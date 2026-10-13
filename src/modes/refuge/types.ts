@@ -5,6 +5,26 @@ import type { FlyingLog, FloatingText, Particle, Projectile, Zombie } from '../.
 
 export type PadKind = 'door' | 'gen' | 'turret' | 'repair';
 
+/** Personnages jouables : chacun a un talent. */
+export type CharacterId = 'mecano' | 'gardien' | 'veinard';
+
+/** Artefacts gagnés à la roue, posés dans les 3 emplacements du refuge. */
+export type ArtifactKind = 'mega' | 'tesla' | 'frost' | 'heal';
+
+/** Cases de la roue de fin de manche. */
+export type WheelPrize = 'gold' | 'repair' | 'turbo' | 'storm' | 'power' | 'shield' | 'artifact' | 'mega';
+
+/** Pouvoirs du Démon : passifs, ou actifs (bouton). */
+export type DemonPower = 'toxic' | 'regen' | 'brute' | 'hide' | 'clone' | 'roar' | 'dash';
+
+export type RefugeRole = 'survivor' | 'demon';
+
+/** Éclair à dessiner (orage, bobine Tesla). */
+export interface Zap {
+  points: { x: number; y: number }[];
+  life: number;
+}
+
 export interface RefugePad {
   kind: PadKind;
   /** Position dans le monde. */
@@ -46,6 +66,25 @@ export interface Room {
   pads: RefugePad[];
   repairCooldown: number;
   owner: number | null;
+  /** 3 emplacements d'artefacts (null = vide). */
+  artifactSpots: { x: number; y: number }[];
+  artifacts: (ArtifactKind | null)[];
+  artifactCooldowns: number[];
+  /** Bonus temporaires (secondes restantes) et bouclier magique (points). */
+  boosts: { power: number; turbo: number; storm: number; stormCooldown: number };
+  shield: number;
+  shieldMax: number;
+  /** Défenses assourdies par le rugissement du Démon (secondes restantes). */
+  stun: number;
+  /** Poison des griffes toxiques : dégâts par seconde et durée restante. */
+  poison: { dps: number; time: number };
+  /** Performance pendant la manche (donne de la chance à la roue). */
+  roundScore: number;
+  /** Modificateurs du personnage qui occupe le refuge. */
+  turretCostMult: number;
+  turretRateMult: number;
+  doorHpMult: number;
+  repairFree: boolean;
   /** Murs (rectangles pleins) ; la porte est gérée à part. */
   walls: Rect[];
 }
@@ -64,6 +103,7 @@ export interface Survivor {
   alive: boolean;
   gold: number;
   shirt: string;
+  character: CharacterId;
   /** Robots : emplacement visé, chemin (entrée puis intérieur du refuge) et prochaine réflexion. */
   goal: { x: number; y: number } | null;
   path: { x: number; y: number }[];
@@ -76,6 +116,8 @@ export interface Survivor {
 export type DemonState = 'hunt' | 'attack' | 'devour' | 'feast' | 'retreat' | 'heal';
 
 export interface Demon {
+  /** -1 pour le Démon, un autre nombre négatif pour chaque double. */
+  id: number;
   x: number;
   y: number;
   vx: number;
@@ -95,6 +137,24 @@ export interface Demon {
   dirX: 1 | -1;
   /** Apparition : 0 = encore sous l'autel, 1 = présent. */
   rise: number;
+  /** Double temporaire (pouvoir Dédoublement) : temps restant, sinon 0. */
+  cloneTime: number;
+  /** Ruée en cours (secondes restantes) et direction. */
+  dashTime: number;
+  dashX: number;
+  dashY: number;
+  /** Ralentissement subi cette image (totem de givre). */
+  slow: number;
+}
+
+/** Résultat d'un tour de roue, pour l'affichage. */
+export interface WheelSpin {
+  prize: WheelPrize;
+  /** Artefact obtenu (case artefact). */
+  artifact: ArtifactKind | null;
+  /** Chance de la manche (0 à 1). */
+  luck: number;
+  round: number;
 }
 
 export type RefugePhase = 'intro' | 'choose' | 'arrival' | 'siege' | 'over';
@@ -109,11 +169,33 @@ export type RefugeEvent =
   | { type: 'demonLevel'; level: number }
   | { type: 'demonRetreat' }
   | { type: 'demonKilled' }
+  | { type: 'roundEnd'; round: number }
+  | { type: 'demonPower'; power: DemonPower; level: number }
+  | { type: 'demonActive'; power: DemonPower }
   | { type: 'zombieKilled' }
   | { type: 'over'; won: boolean };
 
 export interface RefugeState {
   time: number;
+  /** Le joueur est un survivant (survivors[0]) ou le Démon. */
+  role: RefugeRole;
+  /** Démon piloté par l'ordinateur (toujours en rôle survivant ; tests en rôle Démon). */
+  demonAI: boolean;
+  /** Manche en cours (1 à ROUNDS) et temps restant avant la roue. */
+  round: number;
+  roundTimer: number;
+  /** Roue du joueur en attente d'affichage : la partie est en pause tant qu'elle est là. */
+  wheel: WheelSpin | null;
+  /** Choix de pouvoir du Démon en attente (rôle Démon) : la partie est en pause. */
+  powerChoice: DemonPower[] | null;
+  /** Pouvoirs du Démon (niveau de chacun) et recharge des pouvoirs actifs. */
+  powers: Partial<Record<DemonPower, number>>;
+  powerCooldowns: Partial<Record<DemonPower, number>>;
+  /** Tourelles assourdies par le rugissement (secondes restantes). */
+  roarTime: number;
+  /** Doubles du Démon. */
+  clones: Demon[];
+  zaps: Zap[];
   /** Compte à rebours, course aux refuges, arrivée du Démon, siège. */
   phase: RefugePhase;
   /** Temps restant de la phase en cours. */
@@ -134,7 +216,8 @@ export interface RefugeState {
   siegeStart: number;
   /** Nombre d'éliminations (pour le classement). */
   eliminations: number;
-  result: { won: boolean; rank: number; survivedSeconds: number } | null;
+  /** Rôle survivant : rang du joueur. Rôle Démon : nombre de survivants trouvés. */
+  result: { won: boolean; rank: number; survivedSeconds: number; found: number } | null;
   // Effets partagés avec le mode Vagues
   particles: Particle[];
   texts: FloatingText[];

@@ -4,7 +4,7 @@ import type { Rect, Room } from './types';
 // 8 refuges : 4 en haut (porte vers le bas), 4 en bas (porte vers le haut),
 // autour d'une grande place centrale où rôdent le Démon et les zombies.
 
-const COLUMNS = [40, 400, 760, 1120];
+const COLUMNS = [40, 460, 880, 1300];
 const TOP_Y = 80;
 const BOTTOM_Y = ARENA_H - 80 - ROOM_H;
 
@@ -27,11 +27,12 @@ function makeRoom(id: number, x: number, y: number, doorSide: 'top' | 'bottom'):
   const inward = doorSide === 'bottom' ? 1 : -1; // du fond vers l'avant
   const at = (lx: number, fromBack: number) => ({ x: x + lx, y: back + fromBack * inward });
   const turretSpots = [at(48, 46), at(ROOM_W - 48, 46), at(48, ROOM_H - 46), at(ROOM_W - 48, ROOM_H - 46)];
-  // Générateur au fond ; ses améliorations et la réparation au milieu ; la porte devant.
+  // Générateur au fond ; ses améliorations et la réparation, puis la rangée d'artefacts ; la porte devant.
   const gen = at(ROOM_W / 2, 52);
-  const genPad = at(ROOM_W / 2 - 52, ROOM_H / 2);
-  const repair = at(ROOM_W / 2 + 52, ROOM_H / 2);
-  const doorPad = at(ROOM_W / 2, ROOM_H - 52);
+  const genPad = at(ROOM_W / 2 - 60, 120);
+  const repair = at(ROOM_W / 2 + 60, 120);
+  const artifactSpots = [at(64, 188), at(ROOM_W / 2, 188), at(ROOM_W - 64, 188)];
+  const doorPad = at(ROOM_W / 2, ROOM_H - 46);
   return {
     id,
     inner,
@@ -47,6 +48,19 @@ function makeRoom(id: number, x: number, y: number, doorSide: 'top' | 'bottom'):
     ],
     repairCooldown: 0,
     owner: null,
+    artifactSpots,
+    artifacts: [null, null, null],
+    artifactCooldowns: [0, 0, 0],
+    boosts: { power: 0, turbo: 0, storm: 0, stormCooldown: 0 },
+    shield: 0,
+    shieldMax: 0,
+    stun: 0,
+    poison: { dps: 0, time: 0 },
+    roundScore: 0,
+    turretCostMult: 1,
+    turretRateMult: 1,
+    doorHpMult: 1,
+    repairFree: false,
     walls,
   };
 }

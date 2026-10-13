@@ -1,9 +1,9 @@
 // Équilibrage du mode Refuges.
 
-export const ARENA_W = 1460;
-export const ARENA_H = 1500;
-export const ROOM_W = 300;
-export const ROOM_H = 240;
+export const ARENA_W = 1700;
+export const ARENA_H = 1580;
+export const ROOM_W = 360;
+export const ROOM_H = 300;
 export const WALL = 18;
 export const DOOR_GAP = 78;
 
@@ -12,6 +12,9 @@ export const INTRO_TIME = 3;
 export const CHOOSE_TIME = 20;
 export const ARRIVAL_TIME = 4.2;
 export const SIEGE_TIME = 7 * 60;
+/** Le siège est découpé en manches ; à la fin de chacune, chaque survivant fait tourner la roue. */
+export const ROUND_TIME = 60;
+export const ROUNDS = SIEGE_TIME / ROUND_TIME;
 
 export const SURVIVOR_SPEED = 200;
 export const SURVIVOR_RADIUS = 14;

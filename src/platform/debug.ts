@@ -68,27 +68,44 @@ export function applyDebugHash(state: GameState) {
 }
 
 /**
- * Mode Refuges, dans le navigateur : #refuge-vitrine place directement le joueur dans un refuge
- * avec les 4 niveaux de tourelles, une porte niv. 3, et le Démon qui attaque sa porte.
+ * Mode Refuges, dans le navigateur :
+ * #refuge-vitrine : le joueur dans un refuge avec les 4 niveaux de tourelles, des artefacts, un bouclier,
+ *   et le Démon qui attaque sa porte. #refuge-roue : siège lancé, la roue tourne au bout de 3 s.
+ * #refuge-demon-vite : rôle Démon, siège lancé, pouvoirs actifs déjà débloqués.
  */
 export function applyRefugeDebugHash(state: RefugeState) {
   if (Platform.OS !== 'web' || typeof window === 'undefined') return state;
-  if (!window.location.hash.toLowerCase().includes('vitrine')) return state;
-  const room = state.rooms[1];
-  const player = state.survivors[0];
-  room.owner = 0;
-  player.roomId = room.id;
-  player.x = room.gen.x;
-  player.y = room.gen.y + 20;
-  player.gold = 500;
-  room.turrets.forEach((t, i) => (t.level = i + 1));
-  room.door.level = 3;
-  room.door.maxHp = room.door.hp = 3300;
+  const hash = window.location.hash.toLowerCase();
+  const fast = hash.includes('vitrine') || hash.includes('roue') || hash.includes('vite');
+  if (!fast) return state;
+  // Tout le monde est déjà dans un refuge, le siège commence.
+  state.survivors.forEach((s, i) => {
+    const room = state.rooms[(i + 1) % state.rooms.length];
+    room.owner = s.id;
+    s.roomId = room.id;
+    s.x = room.gen.x;
+    s.y = room.gen.y + 20;
+  });
   state.phase = 'siege';
   state.phaseTimer = 400;
   state.siegeStart = -100;
+  state.demon.rise = 1;
+  state.roundTimer = hash.includes('roue') ? 3 : 60;
+  if (hash.includes('vite')) {
+    state.siegeStart = state.time - 14;
+    state.powers = { clone: 1, roar: 1, dash: 1 };
+    state.demon.levelTimer = 6;
+    return state;
+  }
+  if (!hash.includes('vitrine')) return state;
+  const room = state.rooms[1];
+  state.survivors[0].gold = 500;
+  room.turrets.forEach((t, i) => (t.level = i + 1));
+  room.door.level = 3;
+  room.door.maxHp = room.door.hp = 3300;
+  room.artifacts = ['mega', 'tesla', 'frost'];
+  room.shieldMax = room.shield = 2000;
   const d = state.demon;
-  d.rise = 1;
   d.level = 3;
   d.state = 'hunt';
   d.targetRoom = room.id;

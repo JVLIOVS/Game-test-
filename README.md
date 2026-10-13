@@ -21,7 +21,15 @@ Six survivants (toi et cinq robots) démarrent au centre d'une arène fermée. H
 - **Vagues de zombies** : toutes les 35 s, avec un mini-boss une vague sur quatre.
 - **But** : être le dernier trouvé, ou tenir jusqu'à la fin. Chaque partie rapporte des âmes.
 
-Code : `src/modes/refuge/` (simulation, robots, rendu) et `src/screens/RefugeScreen.tsx`. Prochaine étape : jouer le rôle du Démon.
+- **Avant la partie** : choisis ton camp (survivant ou Démon) et, en survivant, ton personnage :
+  - Max le Mécano : tourelles moins chères et plus rapides ;
+  - Bruno le Gardien : porte plus solide, réparations gratuites ;
+  - Lila la Veinarde : plus de chance à la roue, plus d'or au départ.
+- **Manches et roue** : le siège dure 7 manches d'une minute. À la fin de chaque manche, la roue tourne : sac d'or, réparation, turbo, orage, puissance ×2, bouclier magique, artefact ou méga-tourelle. Mieux tu as défendu pendant la manche, plus tu as de chance.
+- **Artefacts** : 3 emplacements par chambre pour la méga-tourelle, la bobine Tesla, le totem de givre et le totem de soin.
+- **Rôle Démon** : tu chasses les 6 survivants (robots). Tu frappes les portes en t'en approchant, tu te soignes sur l'autel, et tu choisis un pouvoir à chaque niveau : griffes toxiques, régénération, force brute, peau de pierre, et trois pouvoirs à bouton (dédoublement, rugissement, ruée). Le Démon de l'ordinateur reçoit aussi ces pouvoirs.
+
+Code : `src/modes/refuge/` (simulation `sim.ts`, Démon `demon.ts`, défenses `defense.ts`, roue `wheel.ts`, contenu `data.ts`, robots `ai.ts`, rendu `render.ts`) et les écrans `RefugeLobby.tsx` et `RefugeScreen.tsx`.
 
 ## Mode Vagues
 
@@ -121,4 +129,4 @@ npm run typecheck    # vérification TypeScript
 npm run web:build    # version web dans dist/
 ```
 
-Robots de test : `npm run playtest -- 5` (mode Vagues) et `npx tsx scripts/refugePlaytest.ts 5` (mode Refuges). Version web : ajoute `#refuge` à l'adresse pour lancer directement le mode Refuges, ou `#refuge-vitrine` pour voir tout de suite les 4 tourelles et le Démon.
+Robots de test : `npm run playtest -- 5` (mode Vagues) et `npx tsx scripts/refugePlaytest.ts 5` (mode Refuges). Version web : ajoute `#refuge` à l'adresse pour lancer directement le mode Refuges, `#refuge-jeu` (survivant directement), `#refuge-demon` (rôle Démon), `#refuge-vitrine` (tourelles, artefacts, bouclier), `#refuge-roue` (la roue au bout de 3 s), `#refuge-demon-vite` (rôle Démon avec les pouvoirs). Rôle Démon au clavier : flèches, puis 1, 2, 3 pour les pouvoirs. Test robots du rôle Démon : `ROLE=demon npx tsx scripts/refugePlaytest.ts 5`.
