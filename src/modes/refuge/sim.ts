@@ -6,12 +6,14 @@ import {
   ARENA_W,
   ARRIVAL_TIME,
   BUY_HOLD,
+  CELL,
   CHOOSE_TIME,
   DOOR_COST,
   DOOR_HP,
   GEN_COST,
   GEN_INCOME,
   INTRO_TIME,
+  MAX_TURRETS,
   OFF_GEN_RATIO,
   PAD_RADIUS,
   REPAIR_COOLDOWN,
@@ -34,8 +36,8 @@ import { collideRooms, damageDoor, dist, finish, occupiedRooms, pushOutRect, slo
 import { CHARACTERS, CHARACTER_IDS } from './data';
 import { updateDefenses } from './defense';
 import { createDemon, updateDemons } from './demon';
-import { CENTER, createRooms, doorOutside, doorRect, insideRoom, roomCenter } from './layout';
-import type { CharacterId, RefugePad, RefugeRole, RefugeState, Room, Survivor } from './types';
+import { CENTER, cellTaken, createRooms, doorOutside, doorRect, facingAngle, insideRoom, roomCenter } from './layout';
+import type { ArtifactKind, CharacterId, RefugePad, RefugeRole, RefugeState, RefugeTurret, Room, Survivor } from './types';
 import { endRound } from './wheel';
 
 const BOT_NAMES = ['Léo', 'Mia', 'Sam', 'Inès', 'Tom', 'Zoé'];
@@ -72,6 +74,8 @@ export function createRefuge(setup: RefugeSetup = { role: 'survivor', character:
       gold: START_GOLD + CHARACTERS[character].gold,
       shirt: isPlayer ? CHARACTERS[character].shirt : SHIRTS[i],
       character,
+      inventory: [],
+      buildCell: null,
       goal: null,
       path: [],
       // Petit temps de réaction après le top départ, différent pour chaque robot.
@@ -99,6 +103,7 @@ export function createRefuge(setup: RefugeSetup = { role: 'survivor', character:
     waveTimer: 25,
     round: 1,
     roundTimer: ROUND_TIME,
+    roundLength: ROUND_TIME,
     wheel: null,
     powerChoice: null,
     powers: {},
@@ -130,10 +135,6 @@ export function padOffer(room: Room, pad: RefugePad): { cost: number; level: num
       return room.door.level < DOOR_HP.length - 1 ? { cost: DOOR_COST[room.door.level + 1], level: room.door.level + 1 } : null;
     case 'gen':
       return room.gen.level < GEN_INCOME.length - 1 ? { cost: GEN_COST[room.gen.level + 1], level: room.gen.level + 1 } : null;
-    case 'turret': {
-      const t = room.turrets[pad.slot];
-      return t.level < TURRET_COST.length - 1 ? { cost: Math.round(TURRET_COST[t.level + 1] * room.turretCostMult), level: t.level + 1 } : null;
-    }
     case 'repair':
       return room.repairCooldown <= 0 && room.door.hp < room.door.maxHp ? { cost: room.repairFree ? 0 : REPAIR_COST, level: 0 } : null;
   }
@@ -150,14 +151,60 @@ function buy(state: RefugeState, s: Survivor, room: Room, pad: RefugePad) {
     room.door.hp += room.door.maxHp - before;
   } else if (pad.kind === 'gen') {
     room.gen.level = offer.level;
-  } else if (pad.kind === 'turret') {
-    room.turrets[pad.slot].level = offer.level;
   } else {
     room.door.hp = Math.min(room.door.maxHp, room.door.hp + room.door.maxHp * REPAIR_RATIO);
     room.repairCooldown = room.repairFree ? REPAIR_COOLDOWN / 2 : REPAIR_COOLDOWN;
   }
   spawnBurst(state, pad.x, pad.y, 20, 14, 'confetti', FX_COLORS.confetti, 1);
   state.events.push({ type: 'bought', survivorId: s.id, kind: pad.kind, level: offer.level });
+}
+
+/** Amélioration d'une tourelle posée : coût, ou null au niveau maximum. */
+export function turretOffer(room: Room, t: RefugeTurret): { cost: number; level: number } | null {
+  return t.level < TURRET_COST.length - 1 ? { cost: Math.round(TURRET_COST[t.level + 1] * room.turretCostMult), level: t.level + 1 } : null;
+}
+
+/** Prix d'une nouvelle tourelle, ou null si le refuge en a déjà le maximum. */
+export function newTurretCost(room: Room): number | null {
+  return room.turrets.length < MAX_TURRETS ? Math.round(TURRET_COST[1] * room.turretCostMult) : null;
+}
+
+function upgradeTurret(state: RefugeState, s: Survivor, room: Room, t: RefugeTurret) {
+  const offer = turretOffer(room, t);
+  if (!offer || s.gold < offer.cost) return;
+  s.gold -= offer.cost;
+  t.level = offer.level;
+  spawnBurst(state, t.x, t.y, 20, 14, 'confetti', FX_COLORS.confetti, 1);
+  state.events.push({ type: 'bought', survivorId: s.id, kind: 'turret', level: t.level });
+}
+
+/** Construire une tourelle sur une case libre de son refuge. */
+export function buildTurret(state: RefugeState, s: Survivor, cell: number) {
+  if (s.roomId === null || state.phase !== 'siege') return false;
+  const room = state.rooms[s.roomId];
+  const cost = newTurretCost(room);
+  if (cost === null || s.gold < cost || cellTaken(room, cell) || !room.cells[cell]) return false;
+  s.gold -= cost;
+  const c = room.cells[cell];
+  // Pour l'améliorer, il faudra s'en écarter puis revenir dessus.
+  room.turrets.push({ cell, x: c.x, y: c.y, hold: -1e9, level: 1, cooldown: 0, angle: facingAngle(room), beamTo: null });
+  spawnBurst(state, c.x, c.y, 20, 18, 'confetti', FX_COLORS.confetti, 1.1);
+  state.events.push({ type: 'bought', survivorId: s.id, kind: 'turret', level: 1 });
+  return true;
+}
+
+/** Poser un artefact gagné à la roue sur une case libre. */
+export function placeArtifact(state: RefugeState, s: Survivor, cell: number, kind: ArtifactKind) {
+  if (s.roomId === null) return false;
+  const room = state.rooms[s.roomId];
+  const i = s.inventory.indexOf(kind);
+  if (i < 0 || cellTaken(room, cell) || !room.cells[cell]) return false;
+  s.inventory.splice(i, 1);
+  room.artifacts.push({ kind, cell, cooldown: 0 });
+  const c = room.cells[cell];
+  spawnBurst(state, c.x, c.y, 30, 30, 'confetti', FX_COLORS.confetti, 1.5);
+  state.events.push({ type: 'placed', survivorId: s.id, kind });
+  return true;
 }
 
 // ---------- Survivants ----------
@@ -244,6 +291,20 @@ function updateSurvivors(state: RefugeState, input: PlayerInput, dt: number) {
         buy(state, s, room, pad);
       }
     }
+    // Rester sur une tourelle l'améliore.
+    for (const t of room.turrets) {
+      if (dist(s.x, s.y, t.x, t.y) < PAD_RADIUS) t.hold += dt;
+      else t.hold = 0;
+      if (t.hold >= BUY_HOLD) {
+        t.hold = -0.6;
+        upgradeTurret(state, s, room, t);
+      }
+    }
+    // Case vide sous les pieds : on peut y construire.
+    s.buildCell = null;
+    room.cells.forEach((c, i) => {
+      if (s.buildCell === null && Math.abs(s.x - c.x) < CELL / 2 && Math.abs(s.y - c.y) < CELL / 2 && !cellTaken(room, i)) s.buildCell = i;
+    });
   }
 }
 
@@ -286,7 +347,7 @@ function startSiege(state: RefugeState) {
   state.phaseTimer = SIEGE_TIME;
   state.siegeStart = state.time;
   state.round = 1;
-  state.roundTimer = ROUND_TIME;
+  state.roundTimer = state.roundLength;
   state.demon.rise = 1;
   spawnBurst(state, CENTER.x, CENTER.y, 40, 40, 'goo', ['#C2352B', '#FF7A3D', '#FFB020'], 2);
   addTrauma(state, 0.9);

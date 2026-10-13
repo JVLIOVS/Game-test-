@@ -53,7 +53,7 @@ for (let r = 0; r < runs; r++) {
     'Refuges :',
     state.rooms
       .filter((rm) => rm.owner !== null)
-      .map((rm) => `${state.survivors[rm.owner!].name}(${state.survivors[rm.owner!].character}): porte ${rm.door.level} gén ${rm.gen.level} tour. ${rm.turrets.map((t) => t.level).join('')} art. ${rm.artifacts.map((a) => a ?? '-').join(',')}`)
+      .map((rm) => `${state.survivors[rm.owner!].name}(${state.survivors[rm.owner!].character}): porte ${rm.door.level} gén ${rm.gen.level} tour. ${rm.turrets.map((t) => t.level).join('')} art. ${rm.artifacts.map((a) => a.kind).join(',')}`)
       .join(' | '),
   );
 }

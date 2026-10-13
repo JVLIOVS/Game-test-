@@ -7,11 +7,11 @@ import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { t, type TranslationKey } from '../i18n';
 import { createJoystick, joystickEnd, joystickMove, joystickStart, readInput } from '../input/joystick';
 import { ROUNDS, SIEGE_TIME, refugeSouls } from '../modes/refuge/balance';
-import { ACTIVE_POWERS, CHARACTERS, DEMON_POWERS } from '../modes/refuge/data';
+import { ACTIVE_POWERS, ARTIFACTS, CHARACTERS, DEMON_POWERS } from '../modes/refuge/data';
 import { chooseDemonPower, graceLeft, useDemonPower } from '../modes/refuge/demon';
 import { drawRefuge } from '../modes/refuge/render';
-import { createRefuge, playerSurvivor, stepRefuge, type RefugeSetup } from '../modes/refuge/sim';
-import type { DemonPower, RefugeEvent, RefugeState } from '../modes/refuge/types';
+import { buildTurret, createRefuge, newTurretCost, placeArtifact, playerSurvivor, stepRefuge, type RefugeSetup } from '../modes/refuge/sim';
+import type { ArtifactKind, DemonPower, RefugeEvent, RefugeState } from '../modes/refuge/types';
 import { applyRefugeDebugHash } from '../platform/debug';
 import { haptics } from '../platform/haptics';
 import { Banner, type BannerData } from '../ui/Banner';
@@ -56,6 +56,10 @@ interface Hud {
   /** Pouvoirs actifs : "clone:2:0,roar:1:12" (niveau et recharge), pour savoir quand redessiner. */
   powersKey: string;
   paused: boolean;
+  /** Case vide sous les pieds du joueur (menu de construction), artefacts à poser, prix d'une tourelle. */
+  buildCell: number | null;
+  bagKey: string;
+  turretCost: number | null;
   result: RefugeState['result'];
   /** Bilan du joueur, figé dès qu'il est éliminé (ou à la fin de la partie). */
   mine: { won: boolean; rank: number; survivedSeconds: number; found: number } | null;
@@ -84,6 +88,9 @@ function readHud(s: RefugeState): Hud {
     grace: s.role === 'demon' && s.phase === 'siege' ? Math.ceil(graceLeft(s)) : 0,
     powersKey: ACTIVE_POWERS.filter((k) => s.powers[k]).map((k) => `${k}:${s.powers[k]}:${Math.ceil(s.powerCooldowns[k] ?? 0)}`).join(','),
     paused: s.wheel !== null || s.powerChoice !== null,
+    buildCell: p && p.alive && s.phase === 'siege' ? p.buildCell : null,
+    bagKey: p ? p.inventory.join(',') : '',
+    turretCost: room ? newTurretCost(room) : null,
     result: s.result,
     mine:
       s.result ??
@@ -138,7 +145,11 @@ export function RefugeScreen({ setup, onFinish, onRetry, onMenu }: Props) {
   const [summary, setSummary] = useState<Hud['mine']>(null);
   const [spectating, setSpectating] = useState(false);
   // Caméra et place prise par l'interface du haut (le jeu se centre en dessous).
-  const camera = useRef({ x: 0, y: 0, ready: false }).current;
+  const camera = useRef({ x: 0, y: 0, zoom: 1, ready: false }).current;
+  // Bouton œil : vue d'ensemble de l'arène.
+  const [overview, setOverview] = useState(false);
+  const overviewRef = useRef(false);
+  overviewRef.current = overview;
   const hudBottom = useRef(0);
   const bannerQueue = useRef<Omit<BannerData, 'id'>[]>([]);
   const bannerTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
@@ -275,7 +286,7 @@ export function RefugeScreen({ setup, onFinish, onRetry, onMenu }: Props) {
         setHud(next);
       }
       const canvas = recorder.beginRecording(bounds);
-      drawRefuge(canvas, s, { width, height, top: s.phase === 'arrival' ? 0 : hudBottom.current, cam: camera }, fonts, joystick, dt);
+      drawRefuge(canvas, s, { width, height, top: s.phase === 'arrival' ? 0 : hudBottom.current, cam: camera, overview: overviewRef.current }, fonts, joystick, dt);
       const pic = recorder.finishRecordingAsPicture();
       picture.value = pic;
       if (Platform.OS === 'web') {
@@ -312,7 +323,21 @@ export function RefugeScreen({ setup, onFinish, onRetry, onMenu }: Props) {
   const s = stateRef.current;
   const inSiege = hud.phase === 'siege' || hud.phase === 'over';
   const showEnd = hud.result !== null || (!hud.playerAlive && !spectating);
-  const hint = demonRole
+  const bag = (hud.bagKey ? hud.bagKey.split(',') : []) as ArtifactKind[];
+  const bagKinds = [...new Set(bag)];
+  const building = hud.buildCell !== null;
+  const build = (what: 'turret' | ArtifactKind) => {
+    const st = stateRef.current;
+    const p = playerSurvivor(st);
+    if (!p || p.buildCell === null) return;
+    const ok = what === 'turret' ? buildTurret(st, p, p.buildCell) : placeArtifact(st, p, p.buildCell, what);
+    if (ok) haptics.success();
+    else haptics.error();
+  };  const hint = building
+    ? null
+    : !demonRole && bag.length > 0 && hud.playerAlive
+      ? t('refuge.bagHint')
+      : demonRole
     ? hud.phase === 'siege' && hud.grace > 0
       ? t('refuge.chained', { n: hud.grace })
       : null
@@ -323,6 +348,7 @@ export function RefugeScreen({ setup, onFinish, onRetry, onMenu }: Props) {
         : null;
   const character = !demonRole ? CHARACTERS[setup.character] : null;
   const actives = hud.powersKey ? hud.powersKey.split(',').map((x) => x.split(':')) : [];
+
 
   let endTitle: string;
   if (demonRole) endTitle = hud.result?.won ? t('refuge.demonWin') : hud.playerAlive ? t('refuge.demonLose') : t('refuge.demonDead');
@@ -355,16 +381,36 @@ export function RefugeScreen({ setup, onFinish, onRetry, onMenu }: Props) {
           {demonRole ? (
             <View style={[styles.pill, styles.pillDemon]}>
               <Text style={styles.coin}>😈</Text>
-              <Text style={styles.foundText}>{t('refuge.foundCount', { n: hud.found })}</Text>
+              <Text style={styles.foundText}>{hud.found}/6</Text>
             </View>
           ) : (
             <View style={styles.pill}>
               <Text style={styles.coin}>{character?.icon ?? '🪙'}</Text>
-              <Text style={styles.gold}>🪙 {hud.gold}</Text>
+              <Text style={styles.gold}>{hud.gold}</Text>
             </View>
           )}
+          {/* Jauges fines entre les deux pastilles : elles ne cachent plus le jeu. */}
+          <View style={styles.bars}>
+            {inSiege && (
+              <View style={styles.barRow}>
+                <Text style={styles.barLabel}>😈{hud.demonLevel}</Text>
+                <View style={styles.barBack}>
+                  <View style={[styles.barFill, { width: `${Math.round(hud.demonHp * 100)}%`, backgroundColor: '#FF5A5A' }]} />
+                </View>
+              </View>
+            )}
+            {inSiege && !demonRole && hud.playerAlive && (
+              <View style={styles.barRow}>
+                <Text style={styles.barLabel}>🚪</Text>
+                <View style={styles.barBack}>
+                  <View style={[styles.barFill, { width: `${Math.round(hud.doorHp * 100)}%`, backgroundColor: '#7BD35A' }]} />
+                  {hud.shield > 0 && <View style={[styles.shieldFill, { width: `${Math.round(hud.shield * 100)}%` }]} />}
+                </View>
+              </View>
+            )}
+          </View>
           <View style={[styles.pill, styles.pillDark]}>
-            <Text style={styles.phase}>{inSiege ? `⏱ ${clock(hud.timer)}` : `⏳ ${hud.phase === 'choose' ? hud.timer : 0}s`}</Text>
+            <Text style={styles.phase}>{inSiege ? clock(hud.timer) : `${hud.phase === 'choose' ? hud.timer : 0}s`}</Text>
             {inSiege ? (
               <Text style={styles.round}>{t('refuge.round', { n: hud.round, max: ROUNDS })}</Text>
             ) : (
@@ -373,31 +419,21 @@ export function RefugeScreen({ setup, onFinish, onRetry, onMenu }: Props) {
           </View>
         </View>
         {inSiege && (
-          <View style={styles.bars}>
-            <View style={styles.barRow}>
-              <Text style={styles.barLabel}>😈 {t('refuge.demon', { n: hud.demonLevel })}</Text>
-              <View style={styles.barBack}>
-                <View style={[styles.barFill, { width: `${Math.round(hud.demonHp * 100)}%`, backgroundColor: '#FF5A5A' }]} />
-              </View>
-            </View>
-            {!demonRole && hud.playerAlive && (
-              <View style={styles.barRow}>
-                <Text style={styles.barLabel}>🚪 {t('refuge.door')}</Text>
-                <View style={styles.barBack}>
-                  <View style={[styles.barFill, { width: `${Math.round(hud.doorHp * 100)}%`, backgroundColor: '#7BD35A' }]} />
-                  {hud.shield > 0 && <View style={[styles.shieldFill, { width: `${Math.round(hud.shield * 100)}%` }]} />}
-                </View>
-              </View>
-            )}
+          <View style={styles.boosts}>
             {demonRole ? (
               <Text style={styles.subInfo}>{t('refuge.aliveLeft', { n: hud.alive })}</Text>
             ) : (
-              <View style={styles.boosts}>
+              <>
                 <Text style={styles.subInfo}>{t('refuge.wheelIn', { time: clock(hud.roundTimer) })}</Text>
                 <Boost icon="💪" n={hud.boostPower} />
                 <Boost icon="⚙️" n={hud.boostTurbo} />
                 <Boost icon="⚡" n={hud.boostStorm} />
-              </View>
+                {bag.length > 0 && (
+                  <View style={[styles.boost, styles.bag]}>
+                    <Text style={styles.boostText}>🎒 {bag.map((k) => ARTIFACTS[k].icon).join('')}</Text>
+                  </View>
+                )}
+              </>
             )}
           </View>
         )}
@@ -433,10 +469,41 @@ export function RefugeScreen({ setup, onFinish, onRetry, onMenu }: Props) {
         </View>
       )}
 
+      {building && (
+        <View pointerEvents="box-none" style={[styles.buildBar, { bottom: insets.bottom + 18, left: insets.left + 84, right: insets.right + 12 }]}>
+          <Pressable
+            onPress={() => build('turret')}
+            accessibilityRole="button"
+            disabled={hud.turretCost === null}
+            style={({ pressed }) => [styles.buildBtn, (hud.turretCost === null || hud.gold < hud.turretCost) && styles.buildOff, pressed && styles.pressed]}
+          >
+            <Text style={styles.buildIcon}>🏹</Text>
+            <Text style={styles.buildText}>{hud.turretCost === null ? t('refuge.turretMax') : `${t('refuge.turret')} · ${hud.turretCost}`}</Text>
+          </Pressable>
+          {bagKinds.map((k) => (
+            <Pressable key={k} onPress={() => build(k)} accessibilityRole="button" style={({ pressed }) => [styles.buildBtn, styles.buildArtifact, pressed && styles.pressed]}>
+              <Text style={styles.buildIcon}>{ARTIFACTS[k].icon}</Text>
+              <Text style={styles.buildText}>{t('refuge.place')}</Text>
+            </Pressable>
+          ))}
+        </View>
+      )}
+
+      {(hud.phase === 'choose' || hud.phase === 'siege') && (
+        <Pressable
+          onPress={() => setOverview((v) => !v)}
+          accessibilityRole="button"
+          accessibilityLabel={t('refuge.eye')}
+          style={({ pressed }) => [styles.eye, { bottom: insets.bottom + 18, left: insets.left + 12 }, overview && styles.eyeOn, pressed && styles.pressed]}
+        >
+          <Text style={styles.eyeIcon}>👁️</Text>
+        </Pressable>
+      )}
+
       <Hint text={hint} />
       <Banner banner={banner} />
 
-      {s.wheel && <RefugeWheel key={`${s.wheel.round}`} spin={s.wheel} onDone={closeWheel} />}
+      {s.wheel && <RefugeWheel key={s.wheel.id} spin={s.wheel} onDone={closeWheel} />}
       {s.powerChoice && <DemonPowerPick level={hud.demonLevel} options={s.powerChoice} owned={s.powers} onPick={pickPower} />}
 
       {showEnd && (
@@ -466,8 +533,8 @@ export function RefugeScreen({ setup, onFinish, onRetry, onMenu }: Props) {
 
 const styles = StyleSheet.create({
   root: { flex: 1, backgroundColor: '#16131F' },
-  hud: { position: 'absolute', gap: 8 },
-  row: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'flex-start' },
+  hud: { position: 'absolute', gap: 4 },
+  row: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', gap: 8 },
   pill: {
     flexDirection: 'row',
     alignItems: 'center',
@@ -498,14 +565,24 @@ const styles = StyleSheet.create({
   powerOff: { backgroundColor: '#3A2E52', opacity: 0.85 },
   powerIcon: { fontSize: 30 },
   powerWait: { position: 'absolute', bottom: -4, right: -4, backgroundColor: '#2B2238', color: '#FFFFFF', fontFamily: FONT.bold, fontSize: 13, borderRadius: 10, paddingHorizontal: 6, overflow: 'hidden' },
-  bars: { gap: 6, backgroundColor: 'rgba(30,24,52,0.92)', borderRadius: 16, borderWidth: 3, borderColor: '#2B2238', paddingVertical: 7, paddingHorizontal: 10 },
+  bars: { flex: 1, gap: 5 },
+  bag: { backgroundColor: '#7E3AA3' },
+  buildBar: { position: 'absolute', flexDirection: 'row', flexWrap: 'wrap', gap: 8, justifyContent: 'flex-end' },
+  buildBtn: { flexDirection: 'row', alignItems: 'center', gap: 6, backgroundColor: '#FFD25A', borderRadius: 16, borderWidth: 3, borderColor: '#2B2238', borderBottomWidth: 6, paddingVertical: 8, paddingHorizontal: 12 },
+  buildArtifact: { backgroundColor: '#C49AF0' },
+  buildOff: { backgroundColor: '#8A8298' },
+  buildIcon: { fontSize: 22 },
+  buildText: { fontSize: 16, color: '#2B2238', fontFamily: FONT.bold },
+  eye: { position: 'absolute', width: 60, height: 60, borderRadius: 30, backgroundColor: 'rgba(43,34,56,0.92)', borderWidth: 3, borderColor: '#2B2238', alignItems: 'center', justifyContent: 'center' },
+  eyeOn: { backgroundColor: '#FFD25A' },
+  eyeIcon: { fontSize: 28 },
   countdown: { position: 'absolute', top: 0, left: 0, right: 0, bottom: 0, alignItems: 'center', justifyContent: 'center' },
   countdownText: { fontSize: 120, color: '#FFD25A', fontFamily: FONT.bold, textShadowColor: '#2B2238', textShadowRadius: 10, textShadowOffset: { width: 0, height: 6 } },
   countdownSub: { fontSize: 22, color: '#FFFFFF', fontFamily: FONT.bold, textShadowColor: '#2B2238', textShadowRadius: 6, textAlign: 'center', paddingHorizontal: 30 },
   barRow: { flexDirection: 'row', alignItems: 'center', gap: 8 },
-  barLabel: { color: '#FFFFFF', fontSize: 14, fontFamily: FONT.bold, minWidth: 104 },
-  barBack: { flex: 1, height: 14, borderRadius: 7, backgroundColor: '#15111F', padding: 2 },
-  barFill: { height: 10, borderRadius: 5 },
+  barLabel: { color: '#FFFFFF', fontSize: 12, fontFamily: FONT.bold, minWidth: 26, textShadowColor: '#2B2238', textShadowRadius: 3 },
+  barBack: { flex: 1, height: 10, borderRadius: 5, backgroundColor: 'rgba(21,17,31,0.9)', padding: 2 },
+  barFill: { height: 6, borderRadius: 3 },
   backdrop: {
     position: 'absolute',
     top: 0,

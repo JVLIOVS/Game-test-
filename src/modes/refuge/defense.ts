@@ -64,7 +64,7 @@ function updateRoom(state: RefugeState, room: Room, dt: number) {
   const active = room.owner !== null && state.survivors[room.owner].alive && !room.door.broken;
   if (!active) return;
   // Totem de soin
-  if (room.artifacts.includes('heal') && room.stun <= 0) room.door.hp = Math.min(room.door.maxHp, room.door.hp + room.door.maxHp * HEAL_RATE * dt);
+  if (room.artifacts.some((a) => a.kind === 'heal') && room.stun <= 0) room.door.hp = Math.min(room.door.maxHp, room.door.hp + room.door.maxHp * HEAL_RATE * dt);
 }
 
 function updateRoomDefenses(state: RefugeState, room: Room, dt: number) {
@@ -86,7 +86,7 @@ function updateRoomDefenses(state: RefugeState, room: Room, dt: number) {
     }
   }
   if (!enemies.length) {
-    for (let i = 0; i < 3; i++) room.artifactCooldowns[i] = Math.max(0, room.artifactCooldowns[i] - dt);
+    for (const a of room.artifacts) a.cooldown = Math.max(0, a.cooldown - dt);
     for (const t of room.turrets) t.cooldown -= dt;
     return;
   }
@@ -133,14 +133,15 @@ function updateRoomDefenses(state: RefugeState, room: Room, dt: number) {
   }
 
   // Artefacts
-  room.artifacts.forEach((kind, i) => {
-    room.artifactCooldowns[i] -= dt;
-    if (!kind || room.artifactCooldowns[i] > 0) return;
-    const spot = room.artifactSpots[i];
+  for (const art of room.artifacts) {
+    art.cooldown -= dt;
+    if (art.cooldown > 0) continue;
+    const kind = art.kind;
+    const spot = room.cells[art.cell];
     if (kind === 'mega') {
       const target = enemies.reduce<Target | null>((b, e) => (!b || dist(spot.x, spot.y, e.x, e.y) < dist(spot.x, spot.y, b.x, b.y) ? e : b), null);
-      if (!target || dist(spot.x, spot.y, target.x, target.y) > MEGA.range) return;
-      room.artifactCooldowns[i] = MEGA.interval;
+      if (!target || dist(spot.x, spot.y, target.x, target.y) > MEGA.range) continue;
+      art.cooldown = MEGA.interval;
       state.projectiles.push({
         x: spot.x,
         y: spot.y - 30,
@@ -155,7 +156,7 @@ function updateRoomDefenses(state: RefugeState, room: Room, dt: number) {
       });
     } else if (kind === 'tesla') {
       // Éclair en chaîne de l'un à l'autre
-      room.artifactCooldowns[i] = TESLA.interval;
+      art.cooldown = TESLA.interval;
       let from = { x: spot.x, y: spot.y - 34 };
       const left = [...enemies];
       for (let n = 0; n < TESLA.chain && left.length; n++) {
@@ -166,7 +167,7 @@ function updateRoomDefenses(state: RefugeState, room: Room, dt: number) {
         from = { x: e.x, y: e.y - 20 };
       }
     }
-  });
+  }
 }
 
 function updateProjectiles(state: RefugeState, dt: number) {

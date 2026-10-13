@@ -3,7 +3,7 @@ import type { FlyingLog, FloatingText, Particle, Projectile, Zombie } from '../.
 // Mode Refuges : chacun s'enferme dans un refuge, le renforce avec l'or de son générateur,
 // et tient face au Démon et aux vagues de zombies. Le dernier trouvé gagne.
 
-export type PadKind = 'door' | 'gen' | 'turret' | 'repair';
+export type PadKind = 'door' | 'gen' | 'repair';
 
 /** Personnages jouables : chacun a un talent. */
 export type CharacterId = 'mecano' | 'gardien' | 'veinard';
@@ -30,15 +30,33 @@ export interface RefugePad {
   /** Position dans le monde. */
   x: number;
   y: number;
-  /** Tourelle concernée (pour kind = 'turret'). */
-  slot: number;
   /** Temps passé dessus (achat après un court instant). */
   hold: number;
 }
 
-export interface RefugeTurret {
+/** Case de construction libre dans un refuge. */
+export interface Cell {
   x: number;
   y: number;
+  col: number;
+  /** Rangée comptée depuis le fond du refuge (0) vers la porte (4). */
+  row: number;
+}
+
+/** Artefact posé sur une case. */
+export interface PlacedArtifact {
+  kind: ArtifactKind;
+  cell: number;
+  cooldown: number;
+}
+
+export interface RefugeTurret {
+  /** Case occupée. */
+  cell: number;
+  x: number;
+  y: number;
+  /** Temps passé dessus (amélioration après un court instant). */
+  hold: number;
   /** 0 = emplacement vide. */
   level: number;
   cooldown: number;
@@ -66,10 +84,9 @@ export interface Room {
   pads: RefugePad[];
   repairCooldown: number;
   owner: number | null;
-  /** 3 emplacements d'artefacts (null = vide). */
-  artifactSpots: { x: number; y: number }[];
-  artifacts: (ArtifactKind | null)[];
-  artifactCooldowns: number[];
+  /** Cases libres où l'on construit ce qu'on veut (tourelles, artefacts). */
+  cells: Cell[];
+  artifacts: PlacedArtifact[];
   /** Bonus temporaires (secondes restantes) et bouclier magique (points). */
   boosts: { power: number; turbo: number; storm: number; stormCooldown: number };
   shield: number;
@@ -104,6 +121,10 @@ export interface Survivor {
   gold: number;
   shirt: string;
   character: CharacterId;
+  /** Artefacts gagnés à la roue, en attente d'être posés. */
+  inventory: ArtifactKind[];
+  /** Case vide sous les pieds (le joueur peut y construire). */
+  buildCell: number | null;
   /** Robots : emplacement visé, chemin (entrée puis intérieur du refuge) et prochaine réflexion. */
   goal: { x: number; y: number } | null;
   path: { x: number; y: number }[];
@@ -149,6 +170,8 @@ export interface Demon {
 
 /** Résultat d'un tour de roue, pour l'affichage. */
 export interface WheelSpin {
+  /** Identifiant unique de ce tour de roue. */
+  id: number;
   prize: WheelPrize;
   /** Artefact obtenu (case artefact). */
   artifact: ArtifactKind | null;
@@ -161,7 +184,8 @@ export type RefugePhase = 'intro' | 'choose' | 'arrival' | 'siege' | 'over';
 
 export type RefugeEvent =
   | { type: 'phase'; phase: 'choose' | 'arrival' | 'siege' }
-  | { type: 'bought'; survivorId: number; kind: PadKind; level: number }
+  | { type: 'bought'; survivorId: number; kind: PadKind | 'turret'; level: number }
+  | { type: 'placed'; survivorId: number; kind: ArtifactKind }
   | { type: 'doorHit'; roomId: number }
   | { type: 'doorBroken'; roomId: number }
   | { type: 'eliminated'; survivorId: number; name: string; isPlayer: boolean }
@@ -184,6 +208,8 @@ export interface RefugeState {
   /** Manche en cours (1 à ROUNDS) et temps restant avant la roue. */
   round: number;
   roundTimer: number;
+  /** Durée d'une manche (raccourcie pour les tests). */
+  roundLength: number;
   /** Roue du joueur en attente d'affichage : la partie est en pause tant qu'elle est là. */
   wheel: WheelSpin | null;
   /** Choix de pouvoir du Démon en attente (rôle Démon) : la partie est en pause. */

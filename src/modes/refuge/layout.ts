@@ -1,5 +1,5 @@
-import { ARENA_H, ARENA_W, DOOR_GAP, DOOR_HP, ROOM_H, ROOM_W, WALL } from './balance';
-import type { Rect, Room } from './types';
+import { ARENA_H, ARENA_W, CELL, DOOR_GAP, DOOR_HP, GRID_COLS, GRID_ROWS, ROOM_H, ROOM_W, WALL } from './balance';
+import type { Cell, Rect, Room } from './types';
 
 // 8 refuges : 4 en haut (porte vers le bas), 4 en bas (porte vers le haut),
 // autour d'une grande place centrale où rôdent le Démon et les zombies.
@@ -26,31 +26,31 @@ function makeRoom(id: number, x: number, y: number, doorSide: 'top' | 'bottom'):
   const back = doorSide === 'bottom' ? y : y + ROOM_H;
   const inward = doorSide === 'bottom' ? 1 : -1; // du fond vers l'avant
   const at = (lx: number, fromBack: number) => ({ x: x + lx, y: back + fromBack * inward });
-  const turretSpots = [at(48, 46), at(ROOM_W - 48, 46), at(48, ROOM_H - 46), at(ROOM_W - 48, ROOM_H - 46)];
-  // Générateur au fond ; ses améliorations et la réparation, puis la rangée d'artefacts ; la porte devant.
-  const gen = at(ROOM_W / 2, 52);
-  const genPad = at(ROOM_W / 2 - 60, 120);
-  const repair = at(ROOM_W / 2 + 60, 120);
-  const artifactSpots = [at(64, 188), at(ROOM_W / 2, 188), at(ROOM_W - 64, 188)];
-  const doorPad = at(ROOM_W / 2, ROOM_H - 46);
+  // Grille de 6 × 5 cases. Réservé : générateur au fond, ses améliorations et la réparation juste devant, la porte.
+  const cellAt = (col: number, row: number) => at(CELL / 2 + col * CELL, CELL / 2 + row * CELL);
+  const reserved = (col: number, row: number) => (col === 2 || col === 3) && (row === 0 || row === 1 || row === GRID_ROWS - 1);
+  const cells: Cell[] = [];
+  for (let row = 0; row < GRID_ROWS; row++) for (let col = 0; col < GRID_COLS; col++) if (!reserved(col, row)) cells.push({ ...cellAt(col, row), col, row });
+  const gen = at(ROOM_W / 2, 32);
+  const genPad = cellAt(2, 1);
+  const repair = cellAt(3, 1);
+  const doorPad = at(ROOM_W / 2, CELL / 2 + (GRID_ROWS - 1) * CELL);
   return {
     id,
     inner,
     doorSide,
     door: { x: cx, y: frontY + WALL / 2, level: 1, hp: DOOR_HP[1], maxHp: DOOR_HP[1], hitFlash: 0, broken: false },
     gen: { ...gen, level: 1, spin: 0 },
-    turrets: turretSpots.map((p) => ({ ...p, level: 0, cooldown: 0, angle: doorSide === 'bottom' ? Math.PI / 2 : -Math.PI / 2, beamTo: null })),
+    turrets: [],
     pads: [
-      { kind: 'gen', ...genPad, slot: -1, hold: 0 },
-      { kind: 'door', ...doorPad, slot: -1, hold: 0 },
-      { kind: 'repair', ...repair, slot: -1, hold: 0 },
-      ...turretSpots.map((p, i) => ({ kind: 'turret' as const, x: p.x, y: p.y, slot: i, hold: 0 })),
+      { kind: 'gen', ...genPad, hold: 0 },
+      { kind: 'door', ...doorPad, hold: 0 },
+      { kind: 'repair', ...repair, hold: 0 },
     ],
     repairCooldown: 0,
     owner: null,
-    artifactSpots,
-    artifacts: [null, null, null],
-    artifactCooldowns: [0, 0, 0],
+    cells,
+    artifacts: [],
     boosts: { power: 0, turbo: 0, storm: 0, stormCooldown: 0 },
     shield: 0,
     shieldMax: 0,
@@ -85,5 +85,11 @@ export function doorOutside(room: Room, distance: number) {
 
 export const insideRoom = (room: Room, x: number, y: number, margin = 0) =>
   x > room.inner.x + margin && x < room.inner.x + room.inner.w - margin && y > room.inner.y + margin && y < room.inner.y + room.inner.h - margin;
+
+/** Angle de départ des tourelles : vers la porte. */
+export const facingAngle = (room: Room) => (room.doorSide === 'bottom' ? Math.PI / 2 : -Math.PI / 2);
+
+/** Une case est-elle occupée (tourelle ou artefact) ? */
+export const cellTaken = (room: Room, cell: number) => room.turrets.some((t) => t.cell === cell) || room.artifacts.some((a) => a.cell === cell);
 
 export const roomCenter = (room: Room) => ({ x: room.inner.x + room.inner.w / 2, y: room.inner.y + room.inner.h / 2 });

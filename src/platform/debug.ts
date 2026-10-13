@@ -90,6 +90,7 @@ export function applyRefugeDebugHash(state: RefugeState) {
   state.phaseTimer = 400;
   state.siegeStart = -100;
   state.demon.rise = 1;
+  if (hash.includes('roue')) state.roundLength = 10;
   state.roundTimer = hash.includes('roue') ? 3 : 60;
   if (hash.includes('vite')) {
     state.siegeStart = state.time - 14;
@@ -100,10 +101,20 @@ export function applyRefugeDebugHash(state: RefugeState) {
   if (!hash.includes('vitrine')) return state;
   const room = state.rooms[1];
   state.survivors[0].gold = 500;
-  room.turrets.forEach((t, i) => (t.level = i + 1));
+  // 4 tourelles de niveaux 1 à 4 près de la porte, 3 artefacts posés, 1 dans le sac.
+  const cellOf = (col: number, row: number) => room.cells.findIndex((c) => c.col === col && c.row === row);
+  [cellOf(0, 4), cellOf(1, 3), cellOf(4, 3), cellOf(5, 4)].forEach((cell, i) => {
+    const c = room.cells[cell];
+    room.turrets.push({ cell, x: c.x, y: c.y, hold: 0, level: i + 1, cooldown: 0, angle: Math.PI / 2, beamTo: null });
+  });
+  room.artifacts = [
+    { kind: 'mega', cell: cellOf(2, 3), cooldown: 0 },
+    { kind: 'tesla', cell: cellOf(0, 1), cooldown: 0 },
+    { kind: 'frost', cell: cellOf(5, 1), cooldown: 0 },
+  ];
+  state.survivors[0].inventory = ['heal'];
   room.door.level = 3;
   room.door.maxHp = room.door.hp = 3300;
-  room.artifacts = ['mega', 'tesla', 'frost'];
   room.shieldMax = room.shield = 2000;
   const d = state.demon;
   d.level = 3;

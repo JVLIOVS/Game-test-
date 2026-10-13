@@ -5,6 +5,12 @@ export const ARENA_H = 1580;
 export const ROOM_W = 360;
 export const ROOM_H = 300;
 export const WALL = 18;
+/** Grille de construction : 6 × 5 cases de 60. */
+export const CELL = 60;
+export const GRID_COLS = ROOM_W / CELL;
+export const GRID_ROWS = ROOM_H / CELL;
+/** Nombre maximum de tourelles par refuge. */
+export const MAX_TURRETS = 8;
 export const DOOR_GAP = 78;
 
 /** Compte à rebours de départ, course aux refuges, puis arrivée du Démon (mini-cinématique). */
@@ -47,7 +53,7 @@ export const REPAIR_COOLDOWN = 20;
 /** Démon : se renforce avec le temps et à chaque survivant trouvé. */
 export const demonStats = (level: number) => ({
   maxHp: Math.round(2600 * Math.pow(1.5, level - 1)),
-  damage: Math.round(28 * Math.pow(1.4, level - 1)),
+  damage: Math.round(26 * Math.pow(1.36, level - 1)),
   speed: 120 + level * 4,
 });
 export const DEMON_RADIUS = 30;

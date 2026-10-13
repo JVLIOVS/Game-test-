@@ -1,14 +1,13 @@
 import { PaintStyle, Skia, StrokeCap, StrokeJoin, type SkCanvas, type SkFont, type SkPaint, type SkPath } from '@shopify/react-native-skia';
-import type { Hero } from '../../game/types';
 import type { JoystickState } from '../../input/joystick';
 import { drawFloatingTexts, drawOutlinedText, drawParticles, drawProjectile } from '../../render/fx';
 import { PALETTE as C, fill, layerAlpha, stroke } from '../../render/palette';
-import { drawHero, drawHpBar, drawShadow, drawZombie } from '../../render/sprites';
-import { ARRIVAL_TIME, DEMON_RADIUS, PAD_RADIUS, TURRET, WALL } from './balance';
-import { CENTER, doorRect } from './layout';
+import { drawHpBar, drawShadow, drawZombie } from '../../render/sprites';
+import { ARENA_H, ARENA_W, ARRIVAL_TIME, CELL, DEMON_RADIUS, PAD_RADIUS, TURRET, WALL } from './balance';
+import { CENTER, cellTaken, doorRect } from './layout';
 import { ROAR } from './data';
-import { padOffer, playerSurvivor } from './sim';
-import type { Demon, RefugePad, RefugeState, RefugeTurret, Room, Survivor } from './types';
+import { padOffer, playerSurvivor, turretOffer } from './sim';
+import type { Demon, PlacedArtifact, RefugePad, RefugeState, RefugeTurret, Room, Survivor } from './types';
 
 // Rendu du mode Refuges : arène sombre, refuges éclairés de l'intérieur, portes qui
 // changent d'aspect à chaque niveau, tourelles qui se transforment, Démon menaçant.
@@ -43,33 +42,6 @@ function cached(key: string, build: (b: ReturnType<typeof Skia.PathBuilder.Make>
 }
 
 const scaleFor = (width: number) => Math.min(1.3, Math.max(0.8, width / 480));
-
-function heroLike(s: Survivor): Hero {
-  return {
-    x: s.x,
-    y: s.y,
-    vx: s.vx,
-    vy: s.vy,
-    radius: 14,
-    dirX: s.dirX,
-    walkTime: s.walkTime,
-    swingTime: 0,
-    swingCooldown: 0,
-    swingHitDone: false,
-    target: null,
-    hp: 1,
-    maxHp: 1,
-    hurtFlash: s.hurtFlash,
-    sinceHurt: 0,
-    dead: !s.alive,
-    respawnTimer: 0,
-    axeLevel: 1,
-    level: 1,
-    xp: 0,
-    weapon: { type: 'sword', forge: 0 },
-    comboSide: 1,
-  };
-}
 
 function drawRoomFloor(canvas: SkCanvas, room: Room, mine: boolean) {
   const r = room.inner;
@@ -406,19 +378,23 @@ function drawDemon(canvas: SkCanvas, d: Demon, time: number) {
 
 // ---------- Artefacts et effets des refuges ----------
 
-/** Emplacement d'artefact vide : un socle gravé qui attend la roue. */
-function drawSocket(canvas: SkCanvas, x: number, y: number, time: number) {
-  canvas.drawCircle(x, y, 23, fill('rgba(30,24,52,0.45)'));
-  for (let i = 0; i < 8; i++) {
-    const a = (i / 8) * Math.PI * 2 + time * 0.3;
-    canvas.drawCircle(x + Math.cos(a) * 23, y + Math.sin(a) * 23, 2.2, fill('rgba(230,200,255,0.5)'));
-  }
-  canvas.drawCircle(x, y, 8, stroke('rgba(230,200,255,0.35)', 2));
+/** Grille de construction de ton refuge, et la case où tu te tiens. */
+function drawGrid(canvas: SkCanvas, room: Room, buildCell: number | null, time: number) {
+  room.cells.forEach((c, i) => {
+    const taken = cellTaken(room, i);
+    if (taken) return;
+    const here = i === buildCell;
+    canvas.drawRRect(Skia.RRectXY(Skia.XYWHRect(c.x - CELL / 2 + 4, c.y - CELL / 2 + 4, CELL - 8, CELL - 8), 8, 8), fill(here ? 'rgba(255,210,90,0.3)' : 'rgba(30,24,52,0.16)'));
+    canvas.drawRRect(
+      Skia.RRectXY(Skia.XYWHRect(c.x - CELL / 2 + 4, c.y - CELL / 2 + 4, CELL - 8, CELL - 8), 8, 8),
+      stroke(here ? rgba('255,210,90', 0.7 + Math.sin(time * 8) * 0.3) : 'rgba(255,240,220,0.18)', here ? 3 : 1.5),
+    );
+  });
 }
 
-function drawArtifact(canvas: SkCanvas, room: Room, i: number, time: number) {
-  const kind = room.artifacts[i];
-  const { x, y } = room.artifactSpots[i];
+function drawArtifact(canvas: SkCanvas, room: Room, art: PlacedArtifact, time: number) {
+  const kind = art.kind;
+  const { x, y } = room.cells[art.cell];
   const facing = room.doorSide === 'bottom' ? 1 : -1;
   canvas.save();
   canvas.translate(x, y);
@@ -525,9 +501,6 @@ function drawPad(canvas: SkCanvas, room: Room, pad: RefugePad, gold: number, fon
   } else if (pad.kind === 'repair') {
     canvas.drawRect(Skia.XYWHRect(-3, -11, 6, 22), fill('#7BD35A'));
     canvas.drawRect(Skia.XYWHRect(-11, -3, 22, 6), fill('#7BD35A'));
-  } else if (room.turrets[pad.slot].level === 0) {
-    canvas.drawCircle(0, 0, 8, ic);
-    canvas.drawRect(Skia.XYWHRect(0, -3, 13, 6), ic);
   }
   canvas.restore();
   if (font) {
@@ -536,13 +509,122 @@ function drawPad(canvas: SkCanvas, room: Room, pad: RefugePad, gold: number, fon
   }
 }
 
+/** Sous chacune de tes tourelles : le prix de l'amélioration (rester dessus pour l'acheter). */
+function drawTurretUpgrade(canvas: SkCanvas, room: Room, t: RefugeTurret, gold: number, font: SkFont | null) {
+  const offer = turretOffer(room, t);
+  const can = offer !== null && gold >= offer.cost;
+  if (can) canvas.drawCircle(t.x, t.y, PAD_RADIUS + 2, stroke('#FFD25A', 3));
+  if (t.hold > 0) canvas.drawArc(Skia.XYWHRect(t.x - PAD_RADIUS, t.y - PAD_RADIUS, PAD_RADIUS * 2, PAD_RADIUS * 2), -90, Math.min(1, t.hold / 0.35) * 360, false, stroke('#FFFFFF', 5));
+  if (font) drawOutlinedText(canvas, offer ? `${offer.cost}` : 'MAX', t.x, t.y + 34, font, offer === null ? C.white : can ? COLORS.coin : '#C9C2D8');
+}
+
+// ---------- Survivants : chaque personnage a son allure ----------
+
+const HAIRS = ['#5A3A22', '#2B2238', '#C8783A', '#E8C468', '#7A4A2A', '#B0452A'];
+
+function drawSurvivor(canvas: SkCanvas, s: Survivor, time: number) {
+  const walking = s.walkTime > 0;
+  const phase = Math.sin(s.walkTime * 16);
+  const bob = walking ? Math.abs(phase) * 4 : Math.sin(time * 3) * 1;
+  const hair = HAIRS[s.id % HAIRS.length];
+  const ch = s.character;
+  const ol = fill(C.outline);
+  canvas.save();
+  canvas.translate(s.x, s.y);
+  canvas.scale(s.dirX, 1);
+  // Jambes
+  const lf = walking ? phase * 4 : 0;
+  const pants = ch === 'mecano' ? '#2E5E9A' : ch === 'gardien' ? '#3A3F4C' : '#6E4A8A';
+  for (const [lx, o] of [[-6, lf], [6, -lf]] as const) {
+    canvas.drawCircle(lx, -3 + o, 6.5, ol);
+    canvas.drawCircle(lx, -3 + o, 4.5, fill(pants));
+  }
+  canvas.translate(0, -bob);
+  // Corps
+  canvas.drawRRect(Skia.RRectXY(Skia.XYWHRect(-15, -34, 30, 30), 11, 11), ol);
+  canvas.drawRRect(Skia.RRectXY(Skia.XYWHRect(-13, -32, 26, 26), 9, 9), fill(s.shirt));
+  if (ch === 'mecano') {
+    // Salopette et bretelles
+    canvas.drawRRect(Skia.RRectXY(Skia.XYWHRect(-9, -24, 18, 18), 4, 4), fill('#2E5E9A'));
+    canvas.drawRect(Skia.XYWHRect(-9, -32, 4, 10), fill('#2E5E9A'));
+    canvas.drawRect(Skia.XYWHRect(5, -32, 4, 10), fill('#2E5E9A'));
+    canvas.drawCircle(0, -16, 2.2, fill('#FFD25A'));
+  } else if (ch === 'gardien') {
+    // Plastron d'acier
+    canvas.drawRRect(Skia.RRectXY(Skia.XYWHRect(-11, -30, 22, 18), 6, 6), fill('#AEB6C2'));
+    canvas.drawRect(Skia.XYWHRect(-1, -30, 2, 18), fill('#7E8794'));
+  } else {
+    // Trèfle porte-bonheur sur le cœur
+    for (const [cx, cy] of [[-3, -22], [3, -22], [0, -25], [0, -19]] as const) canvas.drawCircle(cx, cy, 3, fill('#2E8A3A'));
+  }
+  // Tête
+  canvas.drawCircle(0, -46, 16.5, ol);
+  canvas.drawCircle(0, -46, 14.5, fill(C.skin));
+  if (ch === 'mecano') {
+    // Casque de chantier jaune
+    canvas.drawOval(Skia.XYWHRect(-17, -67, 34, 22), ol);
+    canvas.drawOval(Skia.XYWHRect(-15, -65, 30, 18), fill('#FFC300'));
+    canvas.drawRRect(Skia.RRectXY(Skia.XYWHRect(-20, -55, 40, 7), 3, 3), ol);
+    canvas.drawRRect(Skia.RRectXY(Skia.XYWHRect(-18, -54, 36, 4), 2, 2), fill('#FFC300'));
+    canvas.drawRect(Skia.XYWHRect(-2, -66, 4, 11), fill('#E0A800'));
+  } else if (ch === 'gardien') {
+    // Heaume avec un plumet rouge
+    canvas.drawOval(Skia.XYWHRect(-10, -78, 14, 20), ol);
+    canvas.drawOval(Skia.XYWHRect(-8, -76, 10, 16), fill('#E0533D'));
+    canvas.drawOval(Skia.XYWHRect(-17, -66, 34, 24), ol);
+    canvas.drawOval(Skia.XYWHRect(-15, -64, 30, 20), fill('#AEB6C2'));
+    canvas.drawRect(Skia.XYWHRect(-15, -52, 30, 4), fill('#7E8794'));
+  } else {
+    // Cheveux, queue de cheval et pince trèfle
+    canvas.drawOval(Skia.XYWHRect(-16, -64, 30, 17), fill(hair));
+    canvas.drawOval(Skia.XYWHRect(-16, -54, 9, 13), fill(hair));
+    canvas.drawCircle(-19, -48, 7.5, ol);
+    canvas.drawCircle(-19, -48, 6, fill(hair));
+    for (const [cx, cy] of [[7, -62], [12, -62], [9.5, -66], [9.5, -58]] as const) canvas.drawCircle(cx, cy, 2.8, fill('#4FB86A'));
+  }
+  // Yeux
+  canvas.drawCircle(4, -43, 4.6, fill(C.white));
+  canvas.drawCircle(12, -43, 4.6, fill(C.white));
+  canvas.drawCircle(5.6, -42.5, 2.4, ol);
+  canvas.drawCircle(13.6, -42.5, 2.4, ol);
+  canvas.drawCircle(1, -37, 3, fill('rgba(255,110,110,0.45)'));
+  // Objet en main : clé à molette, bouclier, ou lanterne
+  const swing = walking ? phase * 10 : Math.sin(time * 2) * 4;
+  canvas.save();
+  canvas.translate(13, -21);
+  canvas.rotate(swing, 0, 0);
+  if (ch === 'mecano') {
+    canvas.drawRRect(Skia.RRectXY(Skia.XYWHRect(-3, -2, 6, 22), 3, 3), ol);
+    canvas.drawRRect(Skia.RRectXY(Skia.XYWHRect(-1.5, -1, 3, 20), 1.5, 1.5), fill('#AEB6C2'));
+    canvas.drawCircle(0, 22, 7, ol);
+    canvas.drawCircle(0, 22, 5, fill('#AEB6C2'));
+    canvas.drawRect(Skia.XYWHRect(-2, 21, 4, 8), fill(s.shirt));
+  } else if (ch === 'gardien') {
+    canvas.drawCircle(2, 8, 12, ol);
+    canvas.drawCircle(2, 8, 10, fill('#4E7BD6'));
+    canvas.drawCircle(2, 8, 5, fill('#AEB6C2'));
+  } else {
+    canvas.drawCircle(0, 16, 15, fill('rgba(255,190,80,0.22)'));
+    canvas.drawRect(Skia.XYWHRect(-1, 0, 2, 7), ol);
+    canvas.drawRRect(Skia.RRectXY(Skia.XYWHRect(-6.5, 6, 13, 15), 4, 4), ol);
+    canvas.drawRRect(Skia.RRectXY(Skia.XYWHRect(-4.5, 8, 9, 11), 3, 3), fill('#FFD25A'));
+    canvas.drawCircle(0, 13.5, 2.6, fill('#FFF4C2'));
+  }
+  canvas.drawCircle(0, 0, 5.5, ol);
+  canvas.drawCircle(0, 0, 4, fill(C.skin));
+  canvas.restore();
+  canvas.restore();
+}
+
 export interface RefugeView {
   width: number;
   height: number;
   /** Hauteur occupée par l'interface en haut : la caméra centre le jeu en dessous. */
   top: number;
-  /** Caméra lissée, conservée d'une image à l'autre. */
-  cam: { x: number; y: number; ready: boolean };
+  /** Caméra lissée (position et zoom), conservée d'une image à l'autre. */
+  cam: { x: number; y: number; zoom: number; ready: boolean };
+  /** Vue d'ensemble (bouton œil) : toute l'arène d'un coup d'œil. */
+  overview: boolean;
 }
 
 /** Ce que la caméra regarde : toi, puis l'autel pendant l'arrivée, puis ton refuge en entier. */
@@ -567,24 +649,33 @@ function cameraFocus(state: RefugeState) {
 export function drawRefuge(canvas: SkCanvas, state: RefugeState, view: RefugeView, fonts: { big: SkFont | null; small: SkFont | null }, joystick: JoystickState, dt: number) {
   const player = playerSurvivor(state);
   const mine = (room: Room) => player !== null && room.owner === player.id;
-  const scale = scaleFor(view.width);
-  const halfW = view.width / scale / 2;
-  const halfH = view.height / scale / 2;
-  const focus = cameraFocus(state);
+  const overview = view.overview && state.phase !== 'arrival';
+  // Vue d'ensemble : toute l'arène tient dans l'espace sous l'interface.
+  const overviewScale = Math.min(view.width / (ARENA_W + 60), (view.height - view.top - 40) / (ARENA_H + 60));
+  const focus = overview ? { x: ARENA_W / 2, y: ARENA_H / 2 } : cameraFocus(state);
   const cam = view.cam;
+  const targetZoom = overview ? overviewScale : scaleFor(view.width);
   if (!cam.ready) {
     cam.x = focus.x;
     cam.y = focus.y;
+    cam.zoom = targetZoom;
     cam.ready = true;
   }
   const k = 1 - Math.exp(-(state.phase === 'arrival' ? 3 : 7) * dt);
   cam.x += (focus.x - cam.x) * k;
   cam.y += (focus.y - cam.y) * k;
-  const shake = state.trauma * state.trauma * 10;
+  cam.zoom += (targetZoom - cam.zoom) * (1 - Math.exp(-8 * dt));
+  const scale = cam.zoom;
+  const halfW = view.width / scale / 2;
+  const halfH = view.height / scale / 2;
+  const shake = overview ? 0 : state.trauma * state.trauma * 10;
   // Le centre de l'écran utile est sous l'interface du haut.
   const offsetY = view.top / scale / 2;
-  const camX = Math.min(state.width - halfW + 60, Math.max(halfW - 60, cam.x)) + (Math.random() * 2 - 1) * shake;
-  const camY = Math.min(state.height - halfH + 60 + offsetY, Math.max(halfH - 60 - offsetY, cam.y - offsetY)) + (Math.random() * 2 - 1) * shake;
+  const zoomedOut = scale < scaleFor(view.width) * 0.8;
+  const camX = (zoomedOut ? cam.x : Math.min(state.width - halfW + 60, Math.max(halfW - 60, cam.x))) + (Math.random() * 2 - 1) * shake;
+  const camY = (zoomedOut ? cam.y - offsetY : Math.min(state.height - halfH + 60 + offsetY, Math.max(halfH - 60 - offsetY, cam.y - offsetY))) + (Math.random() * 2 - 1) * shake;
+  /** Position à l'écran d'un point de l'arène. */
+  const toScreen = (x: number, y: number) => ({ x: view.width / 2 + (x - camX) * scale, y: view.height / 2 + (y - camY) * scale });
   const margin = 160;
   const visible = (x: number, y: number) => Math.abs(x - camX) < halfW + margin && Math.abs(y - camY) < halfH + margin;
 
@@ -608,7 +699,7 @@ export function drawRefuge(canvas: SkCanvas, state: RefugeState, view: RefugeVie
     drawRoomFloor(canvas, room, mine(room));
     if (room.boosts.turbo > 0) canvas.drawCircle(room.gen.x, room.gen.y - 14, 40 + Math.sin(state.time * 10) * 4, fill('rgba(255,210,90,0.3)'));
     if (room.boosts.power > 0) for (const t of room.turrets) if (t.level > 0) canvas.drawCircle(t.x, t.y, 30, fill(rgba('255,90,60', 0.25 + Math.sin(state.time * 8) * 0.1)));
-    room.artifacts.forEach((a, i) => a === null && drawSocket(canvas, room.artifactSpots[i].x, room.artifactSpots[i].y, state.time));
+    if (mine(room) && player && player.alive && state.phase === 'siege') drawGrid(canvas, room, player.buildCell, state.time);
     drawWalls(canvas, room);
     drawDoor(canvas, room);
     drawGenerator(canvas, room);
@@ -618,21 +709,22 @@ export function drawRefuge(canvas: SkCanvas, state: RefugeState, view: RefugeVie
   const myRoom = player && player.roomId !== null ? state.rooms[player.roomId] : null;
   if (player && myRoom && player.alive && (state.phase === 'siege' || state.phase === 'arrival')) {
     for (const pad of myRoom.pads) drawPad(canvas, myRoom, pad, player.gold, fonts.small, state.time);
+    for (const t of myRoom.turrets) drawTurretUpgrade(canvas, myRoom, t, player.gold, fonts.small);
   }
 
   // Personnages et tourelles, triés en profondeur
   const drawables: { y: number; draw: () => void }[] = [];
   for (const room of state.rooms) {
     for (const t of room.turrets) if (t.level > 0 && visible(t.x, t.y)) drawables.push({ y: t.y, draw: () => drawTurret(canvas, t, state.time) });
-    room.artifacts.forEach((a, i) => {
-      const spot = room.artifactSpots[i];
-      if (a && visible(spot.x, spot.y)) drawables.push({ y: spot.y, draw: () => drawArtifact(canvas, room, i, state.time) });
-    });
+    for (const art of room.artifacts) {
+      const spot = room.cells[art.cell];
+      if (visible(spot.x, spot.y)) drawables.push({ y: spot.y, draw: () => drawArtifact(canvas, room, art, state.time) });
+    }
   }
   for (const s of state.survivors) {
     if (!s.alive || !visible(s.x, s.y)) continue;
     drawShadow(canvas, s.x, s.y, 16, 6);
-    drawables.push({ y: s.y, draw: () => drawHero(canvas, heroLike(s), state.time, { sword: 0, shield: 0, armor: 0 }, s.shirt, false) });
+    drawables.push({ y: s.y, draw: () => drawSurvivor(canvas, s, state.time) });
   }
   for (const z of state.zombies) {
     if (!visible(z.x, z.y)) continue;
@@ -695,6 +787,43 @@ export function drawRefuge(canvas: SkCanvas, state: RefugeState, view: RefugeVie
   for (const z of state.zombies) if (z.hp < z.maxHp && visible(z.x, z.y)) drawHpBar(canvas, z.x, z.y - (z.boss ? 90 : 64), z.boss ? 60 : 28, z.hp / z.maxHp, C.hpEnemy);
   if (fonts.big) drawFloatingTexts(canvas, state.texts, fonts.big);
   canvas.restore();
+
+  if (zoomedOut && fonts.small) {
+    // Vue d'ensemble : prénoms et portes lisibles, Démon entouré.
+    for (const room of state.rooms) {
+      if (room.owner === null) continue;
+      const owner = state.survivors[room.owner];
+      const c = toScreen(room.inner.x + room.inner.w / 2, room.inner.y + room.inner.h / 2);
+      drawOutlinedText(canvas, owner.alive ? owner.name : `× ${owner.name}`, c.x, c.y + 6, fonts.small, mine(room) ? '#FFD25A' : owner.alive ? C.white : '#8E8A9E');
+      if (owner.alive && !room.door.broken) drawHpBar(canvas, c.x, c.y + 14, 50, room.door.hp / room.door.maxHp, room.shield > 0 ? '#9EDBFF' : '#7BD35A');
+    }
+    for (const dm of [state.demon, ...state.clones]) {
+      if (dm.hp <= 0 || dm.rise <= 0) continue;
+      const p = toScreen(dm.x, dm.y - 30);
+      canvas.drawCircle(p.x, p.y, 16 + Math.sin(state.time * 8) * 3, stroke(dm.cloneTime > 0 ? '#C49AF0' : '#FF5A5A', 4));
+    }
+  } else if (state.phase === 'siege' && state.role === 'survivor' && state.demon.hp > 0) {
+    // Flèche au bord de l'écran vers le Démon quand il est hors de vue.
+    const p = toScreen(state.demon.x, state.demon.y - 40);
+    const top = view.top + 20;
+    const inside = p.x > 0 && p.x < view.width && p.y > top && p.y < view.height;
+    if (!inside) {
+      const cx = view.width / 2;
+      const cy = (top + view.height) / 2;
+      const a = Math.atan2(p.y - cy, p.x - cx);
+      const ex = Math.max(28, Math.min(view.width - 28, cx + Math.cos(a) * view.width));
+      const ey = Math.max(top + 10, Math.min(view.height - 120, cy + Math.sin(a) * view.height));
+      canvas.save();
+      canvas.translate(ex, ey);
+      canvas.drawCircle(0, 0, 20, fill('rgba(126,24,48,0.9)'));
+      canvas.drawCircle(0, 0, 20, stroke('#FF5A5A', 3));
+      canvas.drawCircle(-5, -2, 3, fill('#FFE14D'));
+      canvas.drawCircle(5, -2, 3, fill('#FFE14D'));
+      canvas.rotate((a * 180) / Math.PI, 0, 0);
+      canvas.drawPath(cached('demonArrow', (b) => b.moveTo(22, -8).lineTo(34, 0).lineTo(22, 8).close()), fill('#FF5A5A'));
+      canvas.restore();
+    }
+  }
 
   // Bandes noires de cinéma pendant l'arrivée du Démon
   if (state.phase === 'arrival') {

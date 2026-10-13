@@ -26,7 +26,10 @@ Six survivants (toi et cinq robots) démarrent au centre d'une arène fermée. H
   - Bruno le Gardien : porte plus solide, réparations gratuites ;
   - Lila la Veinarde : plus de chance à la roue, plus d'or au départ.
 - **Manches et roue** : le siège dure 7 manches d'une minute. À la fin de chaque manche, la roue tourne : sac d'or, réparation, turbo, orage, puissance ×2, bouclier magique, artefact ou méga-tourelle. Mieux tu as défendu pendant la manche, plus tu as de chance.
-- **Artefacts** : 3 emplacements par chambre pour la méga-tourelle, la bobine Tesla, le totem de givre et le totem de soin.
+- **Construction libre** : chaque chambre est une grille de 6 × 5 cases. Le générateur, la porte et la réparation ont leur place ; ailleurs, marche sur une case vide et choisis : tourelle (8 au maximum) ou artefact gagné à la roue. Reste sur une tourelle pour l'améliorer.
+- **Artefacts** : méga-tourelle, bobine Tesla, totem de givre, totem de soin. Ils arrivent dans le sac 🎒 et se posent où l'on veut.
+- **Bouton œil** 👁️ : vue d'ensemble de toute l'arène (portes des autres, Démon entouré). Une flèche au bord de l'écran montre où est le Démon.
+- **Personnages reconnaissables** : casque de chantier et clé à molette pour le Mécano, heaume à plumet et bouclier pour le Gardien, queue de cheval, trèfle et lanterne pour la Veinarde.
 - **Rôle Démon** : tu chasses les 6 survivants (robots). Tu frappes les portes en t'en approchant, tu te soignes sur l'autel, et tu choisis un pouvoir à chaque niveau : griffes toxiques, régénération, force brute, peau de pierre, et trois pouvoirs à bouton (dédoublement, rugissement, ruée). Le Démon de l'ordinateur reçoit aussi ces pouvoirs.
 
 Code : `src/modes/refuge/` (simulation `sim.ts`, Démon `demon.ts`, défenses `defense.ts`, roue `wheel.ts`, contenu `data.ts`, robots `ai.ts`, rendu `render.ts`) et les écrans `RefugeLobby.tsx` et `RefugeScreen.tsx`.

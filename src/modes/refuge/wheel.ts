@@ -1,6 +1,6 @@
-import { spawnBurst, spawnText } from '../../game/systems/effects';
+import { spawnText } from '../../game/systems/effects';
 import { FX_COLORS } from '../../game/fxColors';
-import { ROUND_TIME, ROUNDS } from './balance';
+import { ROUNDS } from './balance';
 import { BOOST_TIME, CHARACTERS, LUCK_FULL, SHIELD_RATIO, WHEEL, goldPrize, wheelWeight } from './data';
 import type { ArtifactKind, RefugeState, Room, Survivor, WheelPrize } from './types';
 
@@ -25,25 +25,14 @@ export function spinWheel(luck: number): number {
   return weights.length - 1;
 }
 
-/** Pose un artefact dans le premier emplacement libre ; renvoie false si tout est plein. */
-function placeArtifact(state: RefugeState, room: Room, kind: ArtifactKind) {
-  const i = room.artifacts.indexOf(null);
-  if (i < 0) return false;
-  room.artifacts[i] = kind;
-  room.artifactCooldowns[i] = 0;
-  const spot = room.artifactSpots[i];
-  spawnBurst(state, spot.x, spot.y, 30, 30, 'confetti', FX_COLORS.confetti, 1.5);
-  return true;
-}
-
-function randomArtifact(room: Room): ArtifactKind {
+function randomArtifact(room: Room, s: Survivor): ArtifactKind {
   const kinds: ArtifactKind[] = ['tesla', 'frost', 'heal'];
-  const missing = kinds.filter((k) => !room.artifacts.includes(k));
+  const missing = kinds.filter((k) => !room.artifacts.some((a) => a.kind === k) && !s.inventory.includes(k));
   const pool = missing.length ? missing : kinds;
   return pool[Math.floor(Math.random() * pool.length)];
 }
 
-/** Applique le gain ; renvoie l'artefact posé s'il y en a un. */
+/** Applique le gain ; renvoie l'artefact gagné s'il y en a un. */
 function applyPrize(state: RefugeState, room: Room, s: Survivor, prize: WheelPrize): ArtifactKind | null {
   const bonusGold = (k: number) => {
     const g = goldPrize(state.round) * k;
@@ -72,11 +61,10 @@ function applyPrize(state: RefugeState, room: Room, s: Survivor, prize: WheelPri
       return null;
     case 'artifact':
     case 'mega': {
-      const kind: ArtifactKind = prize === 'mega' ? 'mega' : randomArtifact(room);
-      if (placeArtifact(state, room, kind)) return kind;
-      // Plus de place : on reçoit un gros sac d'or à la place.
-      bonusGold(2);
-      return null;
+      // L'artefact rejoint le sac : on le pose où l'on veut dans son refuge.
+      const kind: ArtifactKind = prize === 'mega' ? 'mega' : randomArtifact(room, s);
+      s.inventory.push(kind);
+      return kind;
     }
   }
 }
@@ -91,10 +79,10 @@ export function endRound(state: RefugeState) {
     const prize = WHEEL[spinWheel(luck)].prize;
     const artifact = applyPrize(state, room, s, prize);
     // Le joueur voit sa roue tourner (la partie est en pause pendant ce temps).
-    if (s.isPlayer) state.wheel = { prize, artifact, luck, round: state.round };
+    if (s.isPlayer) state.wheel = { id: state.nextId++, prize, artifact, luck, round: state.round };
   }
   for (const room of state.rooms) room.roundScore = 0;
   state.events.push({ type: 'roundEnd', round: state.round });
   state.round = Math.min(ROUNDS, state.round + 1);
-  state.roundTimer = ROUND_TIME;
+  state.roundTimer = state.roundLength;
 }

@@ -167,7 +167,7 @@ function pickTarget(state: RefugeState, d: Demon): number | null {
   if (free.length) rooms = free;
   // Il préfère les refuges les moins défendus, avec une part de hasard.
   const defense = (r: Room) =>
-    (r.door.hp + r.shield + r.turrets.reduce((sum, t) => sum + t.level * t.level * 250, 0) + r.artifacts.filter(Boolean).length * 900) * (0.75 + Math.random() * 0.5);
+    (r.door.hp + r.shield + r.turrets.reduce((sum, t) => sum + t.level * t.level * 250, 0) + r.artifacts.length * 900) * (0.75 + Math.random() * 0.5);
   rooms.sort((a, b) => defense(a) - defense(b));
   return rooms[0].id;
 }

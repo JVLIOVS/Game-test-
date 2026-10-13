@@ -19,7 +19,7 @@ export interface CharacterDef {
 export const CHARACTERS: Record<CharacterId, CharacterDef> = {
   mecano: { icon: '🔧', shirt: '#FF9F1C', turretCostMult: 0.7, turretRateMult: 1.2, doorHpMult: 1, repairFree: false, luck: 0, gold: 0 },
   gardien: { icon: '🛡️', shirt: '#4E7BD6', turretCostMult: 1, turretRateMult: 1, doorHpMult: 1.4, repairFree: true, luck: 0, gold: 0 },
-  veinard: { icon: '🍀', shirt: '#4FB86A', turretCostMult: 1, turretRateMult: 1, doorHpMult: 1, repairFree: false, luck: 0.35, gold: 40 },
+  veinard: { icon: '🍀', shirt: '#4FB86A', turretCostMult: 1, turretRateMult: 1, doorHpMult: 1, repairFree: false, luck: 0.4, gold: 70 },
 };
 export const CHARACTER_IDS = Object.keys(CHARACTERS) as CharacterId[];
 

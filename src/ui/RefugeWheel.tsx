@@ -1,7 +1,7 @@
 import { Canvas, Path, Skia } from '@shopify/react-native-skia';
 import { useEffect, useMemo, useState } from 'react';
 import { Pressable, StyleSheet, Text, View } from 'react-native';
-import Animated, { Easing, FadeIn, ZoomIn, runOnJS, useAnimatedStyle, useSharedValue, withTiming } from 'react-native-reanimated';
+import Animated, { FadeIn, ZoomIn, useAnimatedStyle, useSharedValue } from 'react-native-reanimated';
 import { t, type TranslationKey } from '../i18n';
 import { ARTIFACTS, WHEEL } from '../modes/refuge/data';
 import type { WheelSpin } from '../modes/refuge/types';
@@ -38,11 +38,25 @@ export function RefugeWheel({ spin, onDone }: { spin: WheelSpin; onDone: () => v
 
   useEffect(() => {
     // Plusieurs tours, puis la case gagnée s'arrête sous la flèche (en haut).
+    // L'animation est calculée image par image : elle repart de zéro à chaque nouvelle roue.
     const target = 360 * 5 - (index * SEG + SEG / 2) + (Math.random() - 0.5) * SEG * 0.6;
-    rotation.value = withTiming(target, { duration: SPIN_MS, easing: Easing.out(Easing.cubic) }, (done) => {
-      if (done) runOnJS(setStopped)(true);
-    });
-  }, [index, rotation]);
+    const start = Date.now();
+    let raf = 0;
+    rotation.value = 0;
+    const tick = () => {
+      const p = Math.min(1, (Date.now() - start) / SPIN_MS);
+      rotation.value = target * (1 - Math.pow(1 - p, 3));
+      if (p < 1) raf = requestAnimationFrame(tick);
+      else setStopped(true);
+    };
+    raf = requestAnimationFrame(tick);
+    // Sécurité : la roue ne reste jamais bloquée à l'écran.
+    const safety = setTimeout(onDone, SPIN_MS + 5000);
+    return () => {
+      cancelAnimationFrame(raf);
+      clearTimeout(safety);
+    };
+  }, [index, rotation, onDone]);
 
   useEffect(() => {
     if (!stopped) return;
@@ -101,7 +115,7 @@ export function RefugeWheel({ spin, onDone }: { spin: WheelSpin; onDone: () => v
           <View style={styles.resultBody}>
             <Text style={styles.resultName}>{spin.artifact ? t(`artifact.${spin.artifact}` as TranslationKey) : t(`wheel.${prize.prize}` as TranslationKey)}</Text>
             <Text style={styles.resultDesc}>
-              {spin.artifact ? t(`artifact.${spin.artifact}.desc` as TranslationKey) : t(`wheel.${prize.prize}.desc` as TranslationKey)}
+              {spin.artifact ? `${t(`artifact.${spin.artifact}.desc` as TranslationKey)} ${t('wheel.toBag')}` : t(`wheel.${prize.prize}.desc` as TranslationKey)}
             </Text>
           </View>
         </Animated.View>

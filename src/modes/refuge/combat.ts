@@ -53,7 +53,7 @@ export function guards(room: Room, x: number, y: number) {
 export function slowAt(state: RefugeState, x: number, y: number) {
   for (const room of state.rooms) {
     if (room.stun > 0 || room.owner === null || !state.survivors[room.owner].alive) continue;
-    if (room.artifacts.includes('frost') && guards(room, x, y)) return FROST_SLOW;
+    if (room.artifacts.some((a) => a.kind === 'frost') && guards(room, x, y)) return FROST_SLOW;
   }
   return 0;
 }
