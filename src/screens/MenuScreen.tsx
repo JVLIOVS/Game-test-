@@ -54,6 +54,7 @@ export function MenuScreen({ meta, onPlay }: { meta: Meta; onPlay: (mode: Mode) 
             [
               { mode: 'waves', icon: '🔥', color: '#7BD35A' },
               { mode: 'refuge', icon: '🚪', color: '#C77DFF' },
+              { mode: 'epoch', icon: '⏳', color: '#FFB86B' },
             ] as const
           ).map((m, i) => (
             <Animated.View key={m.mode} entering={ZoomIn.delay(150 + i * 100).springify().damping(12)} style={styles.modeWrap}>

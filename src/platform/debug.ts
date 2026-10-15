@@ -1,6 +1,7 @@
 import { Platform } from 'react-native';
 import { addStructure } from '../game/systems/build';
 import type { GameState } from '../game/types';
+import type { EpochState } from '../modes/epoch/types';
 import type { RefugeState } from '../modes/refuge/types';
 import { LAYOUT, WALL_SIDES, wallSegments } from '../game/world/layout';
 
@@ -122,5 +123,26 @@ export function applyRefugeDebugHash(state: RefugeState) {
   d.targetRoom = room.id;
   d.x = room.door.x + 150;
   d.y = room.door.y + 160;
+  return state;
+}
+
+/**
+ * Mode Époques, dans le navigateur : #epoque-age3 (commencer à l'époque 3, ou 1 à 5),
+ * #epoque-caisse (une caisse tombe tout de suite), #epoque-riche (beaucoup d'or), #epoque-pouvoir (pouvoir prêt).
+ */
+export function applyEpochDebugHash(state: EpochState) {
+  if (Platform.OS !== 'web' || typeof window === 'undefined') return state;
+  const hash = window.location.hash.toLowerCase();
+  const age = /age(\d)/.exec(hash);
+  if (age) {
+    const a = Math.max(0, Math.min(4, Number(age[1]) - 1));
+    for (const b of state.bases) {
+      b.age = a;
+      b.maxHp = b.hp = 1200 + a * 800;
+    }
+  }
+  if (hash.includes('caisse')) state.crateTimer = 1;
+  if (hash.includes('riche')) state.bases[0].gold = 5000;
+  if (hash.includes('pouvoir')) state.bases[0].special = 0;
   return state;
 }

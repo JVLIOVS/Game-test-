@@ -4,7 +4,20 @@ Jeu mobile iOS de survie en 2D vue du dessus, style cartoon. Expo + React Native
 
 L'accueil propose deux modes.
 
-## Mode Refuges (nouveau)
+## Mode Époques (nouveau)
+
+Deux camps face à face sur un même chemin, vu en perspective : ta base au premier plan, celle de l'adversaire à l'horizon. Chaque moitié du chemin prend le décor de l'époque de son camp.
+
+- **Troupes** : fantassin, archer (attaque à distance) et troupe lourde, qui changent à chaque époque (gourdin, fronde, tricératops → épéiste, archer, chevalier → piquier, mousquet, canon → soldat, tireur, char → sabre laser, blaster, méca).
+- **Évolution** : éliminer des troupes et frapper la base rapporte de l'expérience. Quand la jauge est pleine, le bouton « Évoluer » fait passer à l'époque suivante, de la préhistoire jusqu'à l'ère spatiale.
+- **Tourelle** de base (une par époque) et **pouvoir** à viser sur le chemin : pluie de météores, pluie de flèches, barrage de canons, frappe aérienne, laser orbital.
+- **Caisses** parachutées à toucher : or, expérience, rage (troupes plus rapides et plus fortes) ou soin de la base.
+- **Caméra** : elle suit le front ; glisser le doigt ou toucher la petite carte à droite pour regarder ailleurs.
+- **Fin** : détruire la base adverse. Après 6 minutes, prolongation (tout se renforce), puis mort subite à 6 min 30.
+
+Code : `src/modes/epoch/` (simulation `sim.ts`, adversaire `ai.ts`, contenu `data.ts`, rendu en perspective `render.ts`) et `src/screens/EpochScreen.tsx`. Test entre deux ordinateurs : `npx tsx scripts/epochPlaytest.ts 5`. Web : `#epoque`, `#epoque-age3`, `#epoque-riche`, `#epoque-caisse`, `#epoque-pouvoir`.
+
+## Mode Refuges
 
 Six survivants (toi et cinq robots) démarrent au centre d'une arène fermée. Huit chambres l'entourent, avec un autel au milieu où dort le **Démon**.
 
