@@ -3,6 +3,10 @@
 
 export type Side = 0 | 1; // 0 = toi (en bas, près de la caméra), 1 = l'adversaire (au loin)
 export type UnitKind = 'inf' | 'archer' | 'heavy';
+/** Améliorations achetées en cours de partie. */
+export type UpgradeId = 'attack' | 'armor' | 'economy' | 'walls';
+/** Compétences à déclencher (en plus du pouvoir de l'époque). */
+export type SkillId = 'warcry' | 'heal';
 
 export interface Unit {
   id: number;
@@ -17,9 +21,18 @@ export interface Unit {
   hp: number;
   maxHp: number;
   damage: number;
+  /** Portée au-delà du contact (petite au corps à corps, grande pour les archers). */
   range: number;
+  /** Taille au sol (pour le contact et pour ne pas se chevaucher). */
+  radius: number;
   speed: number;
   cooldown: number;
+  /** Cible actuelle (troupe ennemie), et direction du dernier coup (pour l'élan). */
+  targetId: number | null;
+  aimX: number;
+  aimZ: number;
+  /** En attente au point de ralliement (temps d'attente), avant de partir en groupe. */
+  rally: number | null;
   /** Animation : marche, coup porté, éclat quand on est touché. */
   walk: number;
   attack: number;
@@ -59,6 +72,25 @@ export interface Base {
   flash: number;
   /** Évolution en cours (animation de tourbillon du temps). */
   evolving: number;
+  upgrades: Record<UpgradeId, number>;
+  /** Recharge des compétences. */
+  skills: Record<SkillId, number>;
+  /** Soin en cours (halo vert sur les troupes). */
+  healing: number;
+}
+
+/** Troupe tombée au combat (animation de chute). */
+export interface Corpse {
+  unit: Unit;
+  t: number;
+}
+
+/** Trace d'un coup au corps à corps. */
+export interface Slash {
+  z: number;
+  x: number;
+  life: number;
+  side: Side;
 }
 
 /** Caisse de ravitaillement tombée sur le champ de bataille : à toucher pour la récupérer. */
@@ -111,12 +143,16 @@ export type EpochEvent =
   | { type: 'evolve'; side: Side; age: number }
   | { type: 'special'; side: Side; age: number }
   | { type: 'crate'; bonus: Crate['bonus'] }
+  | { type: 'skill'; side: Side; skill: SkillId }
+  | { type: 'upgrade'; side: Side; id: UpgradeId; level: number }
   | { type: 'over'; won: boolean };
 
 export interface EpochState {
   time: number;
   bases: [Base, Base];
   units: Unit[];
+  corpses: Corpse[];
+  slashes: Slash[];
   shots: Shot[];
   strikes: Strike[];
   crates: Crate[];

@@ -1,4 +1,4 @@
-import type { UnitKind } from './types';
+import type { SkillId, UnitKind, UpgradeId } from './types';
 
 // Équilibrage et contenu du mode Époques.
 
@@ -28,6 +28,7 @@ interface UnitDef {
   /** Secondes entre deux attaques. */
   rate: number;
   range: number;
+  radius: number;
   speed: number;
   cost: number;
   /** Temps de recrutement. */
@@ -36,9 +37,9 @@ interface UnitDef {
 
 /** Statistiques à la préhistoire ; chaque époque les multiplie. */
 export const UNITS: Record<UnitKind, UnitDef> = {
-  inf: { hp: 70, damage: 13, rate: 1, range: 26, speed: 55, cost: 15, train: 0.9 },
-  archer: { hp: 42, damage: 9, rate: 1.2, range: 170, speed: 50, cost: 25, train: 1.2 },
-  heavy: { hp: 320, damage: 32, rate: 1.4, range: 34, speed: 38, cost: 90, train: 2.6 },
+  inf: { hp: 70, damage: 13, rate: 1, range: 8, radius: 13, speed: 55, cost: 15, train: 0.9 },
+  archer: { hp: 42, damage: 9, rate: 1.2, range: 170, radius: 12, speed: 50, cost: 25, train: 1.2 },
+  heavy: { hp: 320, damage: 32, rate: 1.4, range: 12, radius: 26, speed: 38, cost: 90, train: 2.6 },
 };
 export const UNIT_KINDS: UnitKind[] = ['inf', 'archer', 'heavy'];
 /** Icônes des troupes à chaque époque (fantassin, archer, lourd). */
@@ -64,13 +65,36 @@ export const TURRET = { damage: 16, rate: 1.1, range: 380 };
 /** Or gagné sans rien faire, et en éliminant une troupe ennemie (part de son prix). */
 export const incomePerSec = (age: number) => 4 * Math.pow(1.7, age);
 export const KILL_GOLD = 0.8;
+/** L'ordinateur gagne un peu moins d'or que le joueur. */
+export const AI_INCOME = 0.8;
 export const KILL_XP = 1.3;
 export const START_GOLD = 120;
 export const QUEUE_MAX = 5;
 
 /** Pouvoir spécial de l'époque : une frappe sur une zone du chemin. */
-export const SPECIAL = { cooldown: 45, radius: 180, hits: 14, duration: 2.2, damage: 70 };
+export const SPECIAL = { cooldown: 45, radius: 180, hits: 12, duration: 2.2, damage: 45 };
 export const SPECIAL_ICONS = ['☄️', '🏹', '💣', '✈️', '🛰️'];
+
+/** Distance à laquelle une troupe repère un ennemi et fonce sur lui. */
+export const AGGRO = 260;
+
+/** Améliorations : 5 niveaux chacune, payées en or. */
+export const UPGRADES: { id: UpgradeId; icon: string; per: number }[] = [
+  { id: 'attack', icon: '⚔️', per: 0.15 },
+  { id: 'armor', icon: '🛡️', per: 0.15 },
+  { id: 'economy', icon: '🪙', per: 0.25 },
+  { id: 'walls', icon: '🏰', per: 0.2 },
+];
+export const UPGRADE_MAX = 5;
+export const upgradeCost = (level: number) => Math.round(70 * Math.pow(1.9, level));
+
+/** Compétences : cri de guerre (rage) et soins. */
+export const SKILLS: Record<SkillId, { icon: string; cooldown: number }> = {
+  warcry: { icon: '📯', cooldown: 35 },
+  heal: { icon: '💚', cooldown: 50 },
+};
+export const WARCRY_TIME = 8;
+export const HEAL_RATIO = 0.4;
 
 /** Prolongation : après 6 minutes, troupes et coups sur les bases se renforcent chaque minute. */
 export const OVERTIME_START = 360;

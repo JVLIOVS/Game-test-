@@ -1,11 +1,12 @@
-import { LANE, UNIT_KINDS, turretCost, unitCost } from './data';
-import { buyTurret, canEvolve, evolve, specialReady, trainUnit, useSpecial } from './sim';
-import type { EpochState, Side, UnitKind } from './types';
+import { LANE, UNIT_KINDS, turretCost, unitCost, upgradeCost } from './data';
+import { buyTurret, buyUpgrade, canEvolve, evolve, skillReady, specialReady, trainUnit, useSkill, useSpecial } from './sim';
+import type { EpochState, Side, UnitKind, UpgradeId } from './types';
 
 // L'adversaire : il évolue dès qu'il peut, recrute un mélange de troupes adapté à ce qu'il voit,
 // achète une tourelle quand il a de l'avance, et lance son pouvoir sur les groupes ennemis.
 
 const THINK = 0.7;
+const AI_WARMUP = 90;
 /** Taille de la prochaine vague de chaque camp. */
 const waves = new Map<Side, number>();
 
@@ -18,6 +19,8 @@ export function aiThink(state: EpochState, side: Side, dt: number) {
   const me = state.bases[side];
   const foe: Side = side === 0 ? 1 : 0;
   if (canEvolve(state, side)) evolve(state, side);
+  // Il laisse au joueur le temps de prendre ses marques : pas de pouvoir ni de compétence la première minute et demie.
+  const warmedUp = state.time > AI_WARMUP;
 
   const enemies = state.units.filter((u) => u.side === foe);
   // Menace : des ennemis approchent de sa base.
@@ -44,9 +47,21 @@ export function aiThink(state: EpochState, side: Side, dt: number) {
     waves.delete(side);
   }
   if (me.turret < me.age && me.gold > turretCost(me.age) * 1.4) buyTurret(state, side);
+  // Améliorations avec l'or en trop (il garde de quoi envoyer une vague).
+  if (warmedUp && me.gold > waveCost * 2.5) {
+    const order: UpgradeId[] = ['attack', 'armor', 'economy', 'walls'];
+    const id = order.reduce((best, u) => (me.upgrades[u] < me.upgrades[best] ? u : best), order[0]);
+    if (me.gold - upgradeCost(me.upgrades[id]) > waveCost) buyUpgrade(state, side, id);
+  }
+  // Compétences : cri de guerre quand ses troupes se battent, soins quand elles sont blessées.
+  const mine = state.units.filter((u) => u.side === side);
+  const fighting = mine.filter((u) => u.targetId !== null).length;
+  if (warmedUp && fighting >= 4 && skillReady(state, side, 'warcry')) useSkill(state, side, 'warcry');
+  const hurt = mine.filter((u) => u.hp < u.maxHp * 0.5).length;
+  if (warmedUp && (hurt >= 4 || me.hp < me.maxHp * 0.5) && skillReady(state, side, 'heal')) useSkill(state, side, 'heal');
 
   // Pouvoir : sur le plus gros groupe ennemi.
-  if (specialReady(state, side) && enemies.length >= 4) {
+  if (warmedUp && specialReady(state, side) && enemies.length >= 4) {
     let bestZ = 0;
     let bestCount = 0;
     for (const e of enemies) {

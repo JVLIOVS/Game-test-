@@ -10,6 +10,9 @@ Deux camps face à face sur un même chemin, vu en perspective : ta base au prem
 
 - **Troupes** : fantassin, archer (attaque à distance) et troupe lourde, qui changent à chaque époque (gourdin, fronde, tricératops → épéiste, archer, chevalier → piquier, mousquet, canon → soldat, tireur, char → sabre laser, blaster, méca).
 - **Évolution** : éliminer des troupes et frapper la base rapporte de l'expérience. Quand la jauge est pleine, le bouton « Évoluer » fait passer à l'époque suivante, de la préhistoire jusqu'à l'ère spatiale.
+- **Combat** : chaque troupe choisit l'ennemi le plus proche et fonce sur lui (en largeur comme en profondeur) ; les coups ne portent qu'au contact. Les nouvelles troupes se regroupent devant la base et partent par 3.
+- **Améliorations** 🔧 (5 niveaux, payées en or) : armes, armures, économie, remparts.
+- **Compétences** : 📯 cri de guerre (rage pour toutes tes troupes) et 💚 soins (troupes et base).
 - **Tourelle** de base (une par époque) et **pouvoir** à viser sur le chemin : pluie de météores, pluie de flèches, barrage de canons, frappe aérienne, laser orbital.
 - **Caisses** parachutées à toucher : or, expérience, rage (troupes plus rapides et plus fortes) ou soin de la base.
 - **Caméra** : elle suit le front ; glisser le doigt ou toucher la petite carte à droite pour regarder ailleurs.

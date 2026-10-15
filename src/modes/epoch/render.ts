@@ -200,7 +200,21 @@ function drawGround(canvas: SkCanvas, state: EpochState, proj: Projection, W: nu
     path.dispose?.();
     // Bords du chemin
     canvas.drawLine(a.x - wa, a.y, b.x - wb, b.y, line(mix(th.lane, '#000000', 0.3), Math.max(1, 4 * a.s)));
-    canvas.drawLine(a.x + wa, a.y, b.x + wb, b.y, line(mix(th.lane, '#000000', 0.3), Math.max(1, 4 * a.s)));
+    canvas.drawLine(a.x + wa, a.y, b.x + wb, b.y, line(mix(th.lane, '#000000', 0.3), Math.max(1, 4 * a.s)));    // Cailloux sur le chemin, touffes d'herbe sur les côtés (toujours aux mêmes endroits)
+    const seed = Math.abs(Math.round(z / step)) * 9301 + 49297;
+    for (let k = 0; k < 4; k++) {
+      const r1 = ((seed * (k + 3)) % 233280) / 233280;
+      const r2 = ((seed * (k + 7) * 17) % 233280) / 233280;
+      const pz = z + r1 * step;
+      const pebble = proj.at(pz, (r2 - 0.5) * (LANE_HALF + 30) * 1.8);
+      if (pebble && pebble.y > hor) canvas.drawOval(Skia.XYWHRect(pebble.x - 5 * pebble.s, pebble.y - 2 * pebble.s, 10 * pebble.s, 4 * pebble.s), fill(mix(th.lane, '#000000', 0.22)));
+      const tuftX = (r2 < 0.5 ? -1 : 1) * (LANE_HALF + 60 + r1 * 200);
+      const tuft = proj.at(pz, tuftX);
+      if (tuft && tuft.y > hor) {
+        const g = mix(th.side, '#FFFFFF', 0.18);
+        for (const dx of [-5, 0, 5]) canvas.drawLine(tuft.x + dx * tuft.s, tuft.y, tuft.x + dx * 1.6 * tuft.s, tuft.y - 12 * tuft.s, line(g, Math.max(1, 2.5 * tuft.s)));
+      }
+    }
   }
   // Frontière du temps, au milieu du chemin
   if (mid && mid.y > hor) {
@@ -334,178 +348,309 @@ function drawBase(canvas: SkCanvas, b: Base, side: Side, time: number) {
 // ---------- Troupes ----------
 
 const SKIN = '#F2C39A';
+const SKIN_DARK = '#D9A27A';
 
-/** Arme selon l'époque et le type de troupe. */
+/** Arme selon l'époque et le type de troupe, tenue dans la main avant. */
 function drawWeapon(canvas: SkCanvas, u: Unit, swing: number) {
   canvas.save();
-  canvas.translate(12, -26);
-  canvas.rotate(-30 + swing * 110, 0, 0);
+  canvas.translate(13, -30);
+  canvas.rotate(-35 + swing * 120, 0, 0);
   const a = u.age;
   if (u.kind === 'inf') {
     if (a === 0) {
-      canvas.drawRRect(rr(-3, -30, 6, 30, 3), ol());
-      canvas.drawOval(Skia.XYWHRect(-7, -38, 14, 16), fill('#8A5A3A'));
+      // Gros gourdin noueux
+      canvas.drawRRect(rr(-3.5, -30, 7, 32, 3.5), ol());
+      canvas.drawRRect(rr(-2, -29, 4, 30, 2), fill('#8A5A3A'));
+      canvas.drawOval(Skia.XYWHRect(-8, -42, 16, 18), ol());
+      canvas.drawOval(Skia.XYWHRect(-6.5, -40.5, 13, 15), fill('#A8704A'));
+      canvas.drawCircle(-2, -36, 2, fill('#6A4A2A'));
     } else if (a === 1) {
-      canvas.drawRect(Skia.XYWHRect(-2, -34, 4, 30), fill('#D6DCE6'));
-      canvas.drawRect(Skia.XYWHRect(-7, -6, 14, 4), fill('#8A6A2A'));
+      // Épée et garde dorée
+      canvas.drawRRect(rr(-3, -40, 6, 36, 2), ol());
+      canvas.drawRRect(rr(-1.8, -39, 3.6, 34, 1.5), fill('#E8ECF4'));
+      canvas.drawRRect(rr(-8, -6, 16, 5, 2), fill('#C8962A'));
+      canvas.drawRect(Skia.XYWHRect(-1.5, -1, 3, 8), fill('#6A4A2A'));
     } else if (a === 2) {
-      canvas.drawRect(Skia.XYWHRect(-1.5, -46, 3, 46), fill('#8A5A3A'));
-      canvas.drawPath(cached('pike', (b) => b.moveTo(-5, -44).lineTo(0, -56).lineTo(5, -44).close()), fill('#D6DCE6'));
+      // Hallebarde
+      canvas.drawRect(Skia.XYWHRect(-1.8, -58, 3.6, 62), fill('#7A5A3A'));
+      canvas.drawPath(cached('halb', (b) => b.moveTo(-2, -60).lineTo(0, -72).lineTo(2, -60).lineTo(10, -54).lineTo(2, -48).close()), fill('#D6DCE6'));
     } else if (a === 3) {
-      canvas.drawRect(Skia.XYWHRect(-2, -18, 4, 18), fill('#3A3F4C'));
-      canvas.drawRect(Skia.XYWHRect(-1.5, -28, 3, 10), fill('#D6DCE6'));
+      // Fusil à baïonnette
+      canvas.drawRRect(rr(-3, -30, 6, 32, 2), fill('#3A3F4C'));
+      canvas.drawRect(Skia.XYWHRect(-1, -42, 2, 12), fill('#E8ECF4'));
+      canvas.drawRect(Skia.XYWHRect(-3, -2, 6, 8), fill('#6A4A2A'));
     } else {
-      canvas.drawRect(Skia.XYWHRect(-2, -6, 4, 8), fill('#3A3F4C'));
-      canvas.drawRRect(rr(-3, -42, 6, 36, 3), fill('rgba(91,224,255,0.45)'));
-      canvas.drawRRect(rr(-1.5, -40, 3, 34, 1.5), fill('#E0FAFF'));
+      // Sabre laser qui vibre
+      canvas.drawRRect(rr(-3, -6, 6, 10, 2), fill('#3A3F4C'));
+      canvas.drawRRect(rr(-4.5, -46, 9, 42, 4.5), fill('rgba(91,224,255,0.4)'));
+      canvas.drawRRect(rr(-2, -44, 4, 38, 2), fill('#E0FAFF'));
     }
+  } else if (a === 0) {
+    // Fronde qui tourne
+    canvas.drawLine(0, 0, 0, -18, line('#8A5A3A', 2.5));
+    canvas.drawCircle(Math.cos(swing * 9) * 6, -20 + Math.sin(swing * 9) * 4, 4.5, fill('#9A9A9A'));
+  } else if (a === 1) {
+    // Arc tendu
+    canvas.drawPath(cached('bow2', (b) => b.moveTo(-2, -32).quadTo(14, -15, -2, 2)), line(C.outline, 5));
+    canvas.drawPath(cached('bow2', (b) => b.moveTo(-2, -32).quadTo(14, -15, -2, 2)), line('#A8703A', 3));
+    canvas.drawLine(-2, -32, -2 - swing * 6, 2, line('#F1E3C6', 1.2));
   } else {
-    // Archer : fronde, arc, mousquet, fusil, pistolet laser
-    if (a === 0) {
-      canvas.drawLine(0, 0, 0, -20, line('#8A5A3A', 2));
-      canvas.drawCircle(0, -22, 4, fill('#8A8A8A'));
-    } else if (a === 1) {
-      canvas.drawPath(cached('bow', (b) => b.moveTo(-2, -30).quadTo(12, -14, -2, 2)), line('#8A5A3A', 3));
-      canvas.drawLine(-2, -30, -2, 2, line('#F1E3C6', 1));
-    } else {
-      const col = a === 4 ? '#E8ECF8' : a === 3 ? '#3A3F4C' : '#6A4A2A';
-      canvas.drawRRect(rr(-3, -36, 6, 36, 2), fill(col));
-      if (a === 4) canvas.drawCircle(0, -36, 4, fill('#5BE0FF'));
-    }
+    const col = a === 4 ? '#E8ECF8' : a === 3 ? '#3A3F4C' : '#6A4A2A';
+    canvas.drawRRect(rr(-4, -38, 8, 40, 3), ol());
+    canvas.drawRRect(rr(-2.5, -36.5, 5, 37, 2), fill(col));
+    if (a === 2) canvas.drawRect(Skia.XYWHRect(-2.5, -36, 5, 6), fill('#C8962A'));
+    if (a === 4) canvas.drawCircle(0, -38, 4.5, fill(rgba('91,224,255', 0.6 + swing * 0.4)));
   }
   canvas.restore();
 }
 
-/** Coiffe selon l'époque (vue de face pour l'adversaire, de dos pour toi). */
-function drawHeadgear(canvas: SkCanvas, age: number, team: (typeof TEAM)[number]) {
+/** Coiffe selon l'époque. */
+function drawHeadgear(canvas: SkCanvas, age: number, team: (typeof TEAM)[number], front: boolean) {
   if (age === 0) {
-    canvas.drawOval(Skia.XYWHRect(-13, -64, 26, 14), fill('#7A4A2A'));
+    // Crinière ébouriffée et os
+    canvas.drawOval(Skia.XYWHRect(-15, -70, 30, 18), fill('#6A3A1A'));
+    if (front) canvas.drawRRect(rr(-10, -70, 20, 4, 2), fill('#F1E3C6'));
   } else if (age === 1) {
-    canvas.drawOval(Skia.XYWHRect(-14, -66, 28, 20), fill('#B0B8C4'));
-    canvas.drawRect(Skia.XYWHRect(-2, -56, 4, 12), fill('#8A929E'));
+    // Casque à nasal
+    canvas.drawOval(Skia.XYWHRect(-15, -72, 30, 24), ol());
+    canvas.drawOval(Skia.XYWHRect(-13.5, -70.5, 27, 21), fill('#B8C0CC'));
+    canvas.drawOval(Skia.XYWHRect(-8, -69, 9, 6), fill('rgba(255,255,255,0.5)'));
+    if (front) canvas.drawRect(Skia.XYWHRect(-1.8, -56, 3.6, 12), fill('#8A929E'));
+    canvas.drawOval(Skia.XYWHRect(-3, -80, 6, 12), fill(team.main));
   } else if (age === 2) {
-    canvas.drawPath(cached('tricorn', (b) => b.moveTo(-18, -54).lineTo(0, -68).lineTo(18, -54).close()), fill('#2B2238'));
-    canvas.drawCircle(0, -60, 3, fill(team.main));
+    // Tricorne à cocarde
+    canvas.drawPath(cached('tricorn2', (b) => b.moveTo(-20, -58).quadTo(0, -80, 20, -58).quadTo(0, -64, -20, -58).close()), fill('#2B2238'));
+    canvas.drawCircle(front ? 0 : 0, -64, 3.5, fill(team.main));
+    canvas.drawPath(cached('tricornEdge', (b) => b.moveTo(-20, -58).quadTo(0, -64, 20, -58)), line('#C8962A', 2));
   } else if (age === 3) {
-    canvas.drawOval(Skia.XYWHRect(-15, -66, 30, 18), fill('#5A6A4A'));
-    canvas.drawRect(Skia.XYWHRect(-16, -54, 32, 4), fill('#4A5A3A'));
+    // Casque de soldat
+    canvas.drawOval(Skia.XYWHRect(-16, -72, 32, 22), ol());
+    canvas.drawOval(Skia.XYWHRect(-14.5, -70.5, 29, 19), fill('#5E6E4A'));
+    canvas.drawRRect(rr(-17, -56, 34, 5, 2.5), fill('#4A5A3A'));
+    canvas.drawRect(Skia.XYWHRect(-8, -66, 16, 3), fill(team.main));
   } else {
-    canvas.drawOval(Skia.XYWHRect(-15, -68, 30, 26), fill('#E8ECF8'));
-    canvas.drawRRect(rr(-11, -58, 22, 9, 4), fill('#5BE0FF'));
+    // Casque spatial, visière lumineuse
+    canvas.drawOval(Skia.XYWHRect(-16, -74, 32, 30), ol());
+    canvas.drawOval(Skia.XYWHRect(-14.5, -72.5, 29, 27), fill('#F0F2FA'));
+    if (front) canvas.drawRRect(rr(-11, -63, 22, 10, 5), fill('#5BE0FF'));
+    canvas.drawRect(Skia.XYWHRect(-14, -58, 28, 3), fill(team.main));
   }
 }
 
+/** Fantassin ou archer : petit soldat cartoon, de face (ennemi) ou de dos (toi). */
 function drawSoldier(canvas: SkCanvas, u: Unit, time: number) {
   const team = TEAM[u.side];
   const flash = u.flash > 0.5;
+  const front = u.side === 1;
   const step = Math.sin(u.walk * 10);
   const bob = Math.abs(step) * 3;
-  const facing = u.side === 1; // l'adversaire vient vers toi : on voit son visage
-  canvas.drawCircle(-6, -4 + step * 3, 5, ol());
-  canvas.drawCircle(6, -4 - step * 3, 5, ol());
-  canvas.translate(0, -bob);
-  // Corps : peau de bête à la préhistoire, uniforme ensuite
-  const body = flash ? '#FFFFFF' : u.age === 0 ? '#A8784A' : team.main;
-  canvas.drawRRect(rr(-13, -36, 26, 30, 10), ol());
-  canvas.drawRRect(rr(-11, -34, 22, 26, 8), fill(body));
-  if (u.age === 0) canvas.drawRect(Skia.XYWHRect(-11, -24, 22, 5), fill(team.main));
-  else canvas.drawRect(Skia.XYWHRect(-11, -16, 22, 4), fill(team.dark));
-  // Tête
-  canvas.drawCircle(0, -48, 13, ol());
-  canvas.drawCircle(0, -48, 11, fill(flash ? '#FFFFFF' : SKIN));
-  if (facing) {
-    canvas.drawCircle(-4, -48, 2.5, ol());
-    canvas.drawCircle(4, -48, 2.5, ol());
-    canvas.drawRect(Skia.XYWHRect(-4, -42, 8, 2), ol());
-  } else {
-    canvas.drawOval(Skia.XYWHRect(-11, -58, 22, 16), fill('#5A3A22'));
+  const c = (col: string) => (flash ? '#FFFFFF' : col);
+  // Jambes et bottes
+  for (const [lx, o] of [[-6, step], [6, -step]] as const) {
+    canvas.drawRRect(rr(lx - 5, -18 + o * 3, 10, 18, 4), ol());
+    canvas.drawRRect(rr(lx - 3.5, -17 + o * 3, 7, 12, 3), fill(c(u.age === 0 ? '#8A5A3A' : u.age === 4 ? '#C8CEE0' : '#3A3F4C')));
+    canvas.drawRRect(rr(lx - 4, -6 + o * 3, 8, 5, 2), fill(c(u.age === 0 ? SKIN_DARK : '#2B2238')));
   }
-  drawHeadgear(canvas, u.age, team);
+  canvas.translate(0, -bob);
+  // Bras arrière
+  canvas.drawCircle(-14, -28, 5.5, ol());
+  canvas.drawCircle(-14, -28, 4, fill(c(SKIN_DARK)));
+  // Écharpe aux couleurs du camp, qui flotte derrière
+  if (!front) {
+    const flap = Math.sin(time * 8 + u.id) * 4;
+    canvas.drawPath(cached('scarf', (b) => b.moveTo(-6, -42).quadTo(-14, -26, -10, -12).lineTo(-2, -16).quadTo(-4, -28, 2, -40).close()), fill(team.dark));
+    canvas.drawCircle(-10 + flap * 0.3, -12, 3, fill(team.main));
+  }
+  // Corps
+  const body = u.age === 0 ? '#A8784A' : u.age === 1 ? '#9AA2AE' : u.age === 3 ? '#6E7A4E' : u.age === 4 ? '#F0F2FA' : team.main;
+  canvas.drawRRect(rr(-14, -44, 28, 30, 11), ol());
+  canvas.drawRRect(rr(-12.5, -42.5, 25, 27, 9.5), fill(c(body)));
+  // Ombre douce sur un côté
+  canvas.drawRRect(rr(3, -41, 8, 24, 6), fill('rgba(0,0,0,0.12)'));
+  if (u.age === 0) {
+    // Peau de bête tachetée, ceinture du camp
+    for (const [sx, sy] of [[-6, -36], [4, -30], [-3, -24]] as const) canvas.drawCircle(sx, sy, 2.5, fill('#7A4A2A'));
+    canvas.drawRect(Skia.XYWHRect(-12.5, -22, 25, 4), fill(team.main));
+  } else if (u.age === 1) {
+    // Tabard aux couleurs du camp sur la cotte de mailles
+    canvas.drawRRect(rr(-7, -42, 14, 26, 3), fill(c(team.main)));
+    canvas.drawCircle(0, -32, 3.5, fill('#FFD25A'));
+  } else if (u.age === 2) {
+    // Baudriers croisés et boutons dorés
+    canvas.drawLine(-10, -40, 10, -20, line('#F4EEE0', 3));
+    canvas.drawLine(10, -40, -10, -20, line('#F4EEE0', 3));
+    canvas.drawCircle(0, -30, 2, fill('#FFD25A'));
+  } else if (u.age === 3) {
+    // Gilet à poches, brassard du camp
+    canvas.drawRect(Skia.XYWHRect(-9, -30, 7, 6), fill('#5A6A3E'));
+    canvas.drawRect(Skia.XYWHRect(2, -30, 7, 6), fill('#5A6A3E'));
+    canvas.drawRect(Skia.XYWHRect(-12.5, -40, 25, 4), fill(team.main));
+  } else {
+    // Armure blanche, bandes lumineuses
+    canvas.drawRect(Skia.XYWHRect(-12.5, -34, 25, 3), fill(team.main));
+    canvas.drawCircle(0, -26, 3.5, fill(rgba('91,224,255', 0.6 + Math.sin(time * 6) * 0.3)));
+  }
+  // Tête
+  canvas.drawCircle(0, -56, 13.5, ol());
+  canvas.drawCircle(0, -56, 12, fill(c(SKIN)));
+  if (front) {
+    canvas.drawCircle(-4.5, -55, 3, fill('#FFFFFF'));
+    canvas.drawCircle(4.5, -55, 3, fill('#FFFFFF'));
+    canvas.drawCircle(-4.5, -54.2, 1.8, ol());
+    canvas.drawCircle(4.5, -54.2, 1.8, ol());
+    // Sourcils froncés : ils viennent pour se battre
+    canvas.drawLine(-8, -60, -2, -58, line(C.outline, 2));
+    canvas.drawLine(8, -60, 2, -58, line(C.outline, 2));
+    canvas.drawRRect(rr(-3, -49, 6, 2.5, 1.2), ol());
+  } else {
+    canvas.drawOval(Skia.XYWHRect(-12, -66, 24, 18), fill(u.age === 0 ? '#6A3A1A' : '#5A3A22'));
+  }
+  drawHeadgear(canvas, u.age, team, front);
+  // Bras avant et arme
   drawWeapon(canvas, u, u.attack);
-  void time;
+  canvas.drawCircle(13, -30, 5.5, ol());
+  canvas.drawCircle(13, -30, 4, fill(c(SKIN)));
 }
 
-/** Troupe lourde : dinosaure, chevalier, canon, char, robot géant. */
+/** Troupe lourde : tricératops, chevalier, canon, char, méca. */
 function drawHeavy(canvas: SkCanvas, u: Unit, time: number) {
   const team = TEAM[u.side];
   const flash = u.flash > 0.5;
   const step = Math.sin(u.walk * 6);
-  const facing = u.side === 1;
+  const front = u.side === 1;
   const c = (col: string) => (flash ? '#FFFFFF' : col);
+  const shade = fill('rgba(0,0,0,0.13)');
   canvas.translate(0, -Math.abs(step) * 2);
   if (u.age === 0) {
-    // Tricératops
-    for (const lx of [-22, -8, 8, 22]) canvas.drawRRect(rr(lx - 5, -20 + (lx > 0 ? step : -step) * 3, 10, 20, 4), ol());
-    canvas.drawOval(Skia.XYWHRect(-34, -58, 68, 46), ol());
-    canvas.drawOval(Skia.XYWHRect(-31, -55, 62, 40), fill(c('#7A9A4A')));
-    canvas.drawOval(Skia.XYWHRect(-18, -50, 36, 12), fill(team.main));
-    if (facing) {
-      canvas.drawOval(Skia.XYWHRect(-26, -82, 52, 34), fill(c('#9AB86A')));
-      canvas.drawCircle(0, -50, 14, fill(c('#7A9A4A')));
-      for (const hx of [-12, 12]) canvas.drawPath(cached(`horn${hx}`, (b) => b.moveTo(hx - 4, -58).lineTo(hx, -84).lineTo(hx + 4, -58).close()), fill('#F1E3C6'));
-      canvas.drawCircle(-6, -52, 2.5, ol());
-      canvas.drawCircle(6, -52, 2.5, ol());
+    // Tricératops harnaché aux couleurs du camp
+    for (const lx of [-24, -9, 9, 24]) {
+      canvas.drawRRect(rr(lx - 6, -22 + (lx > 0 ? step : -step) * 3, 12, 22, 5), ol());
+      canvas.drawRRect(rr(lx - 4.5, -21 + (lx > 0 ? step : -step) * 3, 9, 19, 4), fill(c('#5E7E3A')));
+    }
+    canvas.drawOval(Skia.XYWHRect(-36, -64, 72, 50), ol());
+    canvas.drawOval(Skia.XYWHRect(-33, -61, 66, 44), fill(c('#7A9E4A')));
+    canvas.drawOval(Skia.XYWHRect(4, -58, 26, 36), shade);
+    for (let k = 0; k < 4; k++) canvas.drawCircle(-18 + k * 12, -52, 3, fill(c('#5E7E3A')));
+    canvas.drawRRect(rr(-20, -50, 40, 12, 4), fill(team.main));
+    if (front) {
+      canvas.drawOval(Skia.XYWHRect(-30, -96, 60, 40), ol());
+      canvas.drawOval(Skia.XYWHRect(-27, -93, 54, 34), fill(c('#A8C470')));
+      for (let k = 0; k < 6; k++) canvas.drawCircle(-24 + k * 9.6, -92, 3, fill(c('#D06A3A')));
+      canvas.drawOval(Skia.XYWHRect(-16, -66, 32, 30), ol());
+      canvas.drawOval(Skia.XYWHRect(-14, -64, 28, 26), fill(c('#7A9E4A')));
+      for (const hx of [-11, 11]) {
+        canvas.drawPath(cached(`horn2${hx}`, (b) => b.moveTo(hx - 4, -70).lineTo(hx * 1.2, -98).lineTo(hx + 4, -70).close()), ol());
+        canvas.drawPath(cached(`horn3${hx}`, (b) => b.moveTo(hx - 2.5, -71).lineTo(hx * 1.2, -95).lineTo(hx + 2.5, -71).close()), fill('#F4EEE0'));
+      }
+      canvas.drawCircle(-6, -56, 3, fill('#FFFFFF'));
+      canvas.drawCircle(6, -56, 3, fill('#FFFFFF'));
+      canvas.drawCircle(-6, -55.5, 1.8, ol());
+      canvas.drawCircle(6, -55.5, 1.8, ol());
     } else {
-      canvas.drawPath(cached('tail', (b) => b.moveTo(-6, -30).lineTo(0, -6).lineTo(6, -30).close()), fill(c('#6A8A3A')));
+      canvas.drawPath(cached('tail2', (b) => b.moveTo(-8, -32).quadTo(0, -2, 8, -32).close()), fill(c('#6A8E3A')));
     }
   } else if (u.age === 1) {
-    // Chevalier à cheval
-    for (const lx of [-12, -4, 4, 12]) canvas.drawRect(Skia.XYWHRect(lx - 2.5, -22 + (lx > 0 ? step : -step) * 3, 5, 22), fill(C.outline));
-    canvas.drawOval(Skia.XYWHRect(-22, -48, 44, 30), ol());
-    canvas.drawOval(Skia.XYWHRect(-20, -46, 40, 26), fill(c('#8A5A3A')));
-    canvas.drawRect(Skia.XYWHRect(-20, -38, 40, 8), fill(team.main));
-    if (facing) canvas.drawOval(Skia.XYWHRect(-8, -60, 16, 26), fill(c('#7A4A2A')));
-    canvas.drawRRect(rr(-11, -78, 22, 30, 8), ol());
-    canvas.drawRRect(rr(-9, -76, 18, 26, 6), fill(c('#B0B8C4')));
-    canvas.drawOval(Skia.XYWHRect(-10, -94, 20, 22), fill(c('#B0B8C4')));
-    canvas.drawRect(Skia.XYWHRect(-7, -86, 14, 3), ol());
-    canvas.drawOval(Skia.XYWHRect(-4, -104, 8, 12), fill(team.main));
+    // Chevalier sur son destrier caparaçonné
+    for (const lx of [-13, -5, 5, 13]) canvas.drawRRect(rr(lx - 3, -24 + (lx > 0 ? step : -step) * 4, 6, 24, 2), ol());
+    canvas.drawOval(Skia.XYWHRect(-24, -54, 48, 34), ol());
+    canvas.drawOval(Skia.XYWHRect(-22, -52, 44, 30), fill(c('#7A4A2A')));
+    canvas.drawRRect(rr(-24, -44, 48, 22, 6), fill(c(team.main)));
+    for (let k = 0; k < 4; k++) canvas.drawPath(cached(`cap${k}`, (b) => b.moveTo(-24 + k * 12, -22).lineTo(-18 + k * 12, -16).lineTo(-12 + k * 12, -22).close()), fill(c(team.dark)));
+    if (front) {
+      canvas.drawOval(Skia.XYWHRect(-9, -70, 18, 30), ol());
+      canvas.drawOval(Skia.XYWHRect(-7.5, -68.5, 15, 27), fill(c('#8A5A3A')));
+      canvas.drawRect(Skia.XYWHRect(-7.5, -66, 15, 8), fill(c('#B8C0CC')));
+    }
+    canvas.drawRRect(rr(-12, -88, 24, 34, 9), ol());
+    canvas.drawRRect(rr(-10.5, -86.5, 21, 31, 8), fill(c('#B8C0CC')));
+    canvas.drawRect(Skia.XYWHRect(-10.5, -76, 21, 6), fill(team.main));
+    canvas.drawOval(Skia.XYWHRect(-11, -108, 22, 24), ol());
+    canvas.drawOval(Skia.XYWHRect(-9.5, -106.5, 19, 21), fill(c('#C8D0DC')));
+    if (front) canvas.drawRect(Skia.XYWHRect(-7, -98, 14, 3), ol());
+    canvas.drawOval(Skia.XYWHRect(-4, -122, 8, 16), fill(team.main));
     canvas.save();
-    canvas.translate(12, -66);
-    canvas.rotate(-60 + u.attack * 70, 0, 0);
-    canvas.drawRect(Skia.XYWHRect(-2, -50, 4, 50), fill('#D6DCE6'));
+    canvas.translate(14, -76);
+    canvas.rotate(-55 + u.attack * 75, 0, 0);
+    canvas.drawRRect(rr(-3, -64, 6, 64, 3), ol());
+    canvas.drawRRect(rr(-1.8, -62, 3.6, 60, 1.8), fill('#C8A060'));
+    canvas.drawPath(cached('lance', (b) => b.moveTo(-4, -62).lineTo(0, -76).lineTo(4, -62).close()), fill('#E8ECF4'));
     canvas.restore();
   } else if (u.age === 2) {
-    // Canon sur roues, et son artilleur
-    canvas.drawCircle(-22, -16, 16, ol());
-    canvas.drawCircle(22, -16, 16, ol());
-    canvas.drawCircle(-22, -16, 12, fill(c('#8A5A3A')));
-    canvas.drawCircle(22, -16, 12, fill(c('#8A5A3A')));
-    canvas.drawRRect(rr(-26, -40, 52, 20, 6), fill(team.dark));
-    canvas.drawCircle(0, -40 - u.attack * 4, 16, ol());
-    canvas.drawCircle(0, -40 - u.attack * 4, 12, fill(c('#3A3F4C')));
-    if (facing) canvas.drawCircle(0, -40, 7, fill('#1A1A22'));
-    if (u.attack > 0.7) canvas.drawCircle(0, facing ? -40 : -60, 14, fill(rgba('255,180,60', 0.7)));
+    // Canon sur affût, mèche fumante
+    for (const wx of [-24, 24]) {
+      canvas.drawCircle(wx, -18, 18, ol());
+      canvas.drawCircle(wx, -18, 14.5, fill(c('#8A5A3A')));
+      for (let k = 0; k < 4; k++) {
+        const a = (k / 4) * Math.PI + u.walk * 3;
+        canvas.drawLine(wx - Math.cos(a) * 12, -18 - Math.sin(a) * 12, wx + Math.cos(a) * 12, -18 + Math.sin(a) * 12, line('#5A3A22', 2.5));
+      }
+      canvas.drawCircle(wx, -18, 4, fill('#C8962A'));
+    }
+    canvas.drawRRect(rr(-28, -44, 56, 22, 6), ol());
+    canvas.drawRRect(rr(-26, -42, 52, 18, 5), fill(c(team.dark)));
+    const recoil = u.attack * 6;
+    canvas.drawCircle(0, -48 - recoil, 19, ol());
+    canvas.drawCircle(0, -48 - recoil, 16, fill(c('#3A3F4C')));
+    canvas.drawCircle(-5, -54 - recoil, 5, fill('rgba(255,255,255,0.25)'));
+    canvas.drawRRect(rr(-18, -50 - recoil, 36, 5, 2), fill('#C8962A'));
+    if (front) {
+      canvas.drawCircle(0, -48 - recoil, 9, fill('#15111F'));
+      if (u.attack > 0.6) canvas.drawCircle(0, -48, 20, fill(rgba('255,180,60', u.attack)));
+    }
   } else if (u.age === 3) {
-    // Char d'assaut
-    canvas.drawRRect(rr(-38, -24, 76, 24, 10), ol());
-    canvas.drawRRect(rr(-35, -22, 70, 20, 8), fill('#3A3F4C'));
-    for (let k = 0; k < 5; k++) canvas.drawCircle(-28 + k * 14, -12, 4, fill('#5E6670'));
-    canvas.drawRRect(rr(-32, -46, 64, 26, 8), ol());
-    canvas.drawRRect(rr(-30, -44, 60, 22, 6), fill(c('#5A6A4A')));
-    canvas.drawRect(Skia.XYWHRect(-30, -36, 60, 4), fill(team.main));
-    canvas.drawRRect(rr(-16, -64, 32, 22, 8), fill(c('#4A5A3A')));
-    if (facing) canvas.drawCircle(0, -52, 7, fill('#1A1A22'));
-    else canvas.drawRect(Skia.XYWHRect(-3, -84, 6, 26), fill(c('#3A4A2A')));
+    // Char d'assaut à chenilles
+    canvas.drawRRect(rr(-42, -26, 84, 26, 11), ol());
+    canvas.drawRRect(rr(-39, -24, 78, 22, 9), fill('#2E3340'));
+    for (let k = 0; k < 6; k++) canvas.drawCircle(-32 + k * 12.8, -13, 5, fill('#5E6670'));
+    canvas.drawRect(Skia.XYWHRect(-39, -25 + ((u.walk * 20) % 4), 78, 2), fill('#4A4F5E'));
+    canvas.drawRRect(rr(-35, -50, 70, 28, 9), ol());
+    canvas.drawRRect(rr(-33, -48, 66, 24, 7), fill(c('#5E7048')));
+    canvas.drawRRect(rr(10, -46, 20, 20, 5), shade);
+    canvas.drawRect(Skia.XYWHRect(-33, -38, 66, 5), fill(team.main));
+    canvas.drawRRect(rr(-18, -70, 36, 24, 9), ol());
+    canvas.drawRRect(rr(-16, -68, 32, 20, 7), fill(c('#6E8256')));
+    if (front) {
+      canvas.drawCircle(0, -58, 8, ol());
+      canvas.drawCircle(0, -58, 5, fill('#15111F'));
+      if (u.attack > 0.6) canvas.drawCircle(0, -58, 18, fill(rgba('255,200,80', u.attack)));
+    } else {
+      canvas.drawRRect(rr(-4, -98, 8, 32, 3), ol());
+      canvas.drawRRect(rr(-2.5, -96, 5, 28, 2), fill(c('#4E6038')));
+    }
   } else {
-    // Robot géant
+    // Méca géant au cœur lumineux
     const glow = 0.6 + Math.sin(time * 6) * 0.3;
-    canvas.drawRRect(rr(-24, -30 + step * 3, 12, 30, 4), ol());
-    canvas.drawRRect(rr(12, -30 - step * 3, 12, 30, 4), ol());
-    canvas.drawRRect(rr(-30, -76, 60, 50, 12), ol());
-    canvas.drawRRect(rr(-27, -73, 54, 44, 10), fill(c('#E8ECF8')));
-    canvas.drawRect(Skia.XYWHRect(-27, -56, 54, 6), fill(team.main));
-    canvas.drawCircle(0, -48, 8, fill(rgba('91,224,255', glow)));
-    canvas.drawRRect(rr(-16, -98, 32, 24, 8), fill(c('#C8CEE0')));
-    if (facing) canvas.drawRRect(rr(-11, -90, 22, 7, 3), fill('#5BE0FF'));
-    for (const ax of [-40, 30]) canvas.drawRRect(rr(ax, -72 + (ax > 0 ? u.attack * 8 : 0), 10, 34, 4), fill(c('#C8CEE0')));
+    for (const [lx, o] of [[-18, step], [18, -step]] as const) {
+      canvas.drawRRect(rr(lx - 8, -34 + o * 4, 16, 34, 5), ol());
+      canvas.drawRRect(rr(lx - 6, -32 + o * 4, 12, 30, 4), fill(c('#C8CEE0')));
+      canvas.drawRRect(rr(lx - 9, -6 + o * 4, 18, 6, 3), fill('#3A3F4C'));
+    }
+    canvas.drawRRect(rr(-32, -84, 64, 54, 14), ol());
+    canvas.drawRRect(rr(-29.5, -81.5, 59, 49, 12), fill(c('#F0F2FA')));
+    canvas.drawRRect(rr(8, -78, 18, 42, 8), shade);
+    canvas.drawRect(Skia.XYWHRect(-29.5, -62, 59, 6), fill(team.main));
+    canvas.drawCircle(0, -50, 10, fill(rgba('91,224,255', glow)));
+    canvas.drawCircle(0, -50, 5, fill('#E0FAFF'));
+    canvas.drawRRect(rr(-17, -108, 34, 26, 10), ol());
+    canvas.drawRRect(rr(-15, -106, 30, 22, 8), fill(c('#DDE2F0')));
+    if (front) canvas.drawRRect(rr(-11, -99, 22, 8, 4), fill('#5BE0FF'));
+    for (const ax of [-42, 32]) {
+      canvas.drawRRect(rr(ax, -80 + (ax > 0 ? u.attack * 10 : 0), 12, 40, 5), ol());
+      canvas.drawRRect(rr(ax + 2, -78 + (ax > 0 ? u.attack * 10 : 0), 8, 36, 4), fill(c('#C8CEE0')));
+    }
   }
 }
 
-function drawUnit(canvas: SkCanvas, u: Unit, rage: boolean, time: number) {
-  if (rage) canvas.drawOval(Skia.XYWHRect(-26, -8, 52, 16), fill(rgba('255,90,60', 0.4 + Math.sin(time * 10) * 0.2)));
-  canvas.drawOval(Skia.XYWHRect(-20, -6, 40, 12), fill('rgba(0,0,0,0.25)'));
-  if (u.kind === 'heavy') drawHeavy(canvas, u, time);
+function drawUnit(canvas: SkCanvas, u: Unit, rage: boolean, healing: boolean, time: number) {
+  const big = u.kind === 'heavy';
+  canvas.drawOval(Skia.XYWHRect(big ? -40 : -18, -7, big ? 80 : 36, 14), fill('rgba(0,0,0,0.28)'));
+  if (rage) canvas.drawOval(Skia.XYWHRect(big ? -46 : -24, -10, big ? 92 : 48, 20), stroke(rgba('255,90,60', 0.6 + Math.sin(time * 12) * 0.3), 3));
+  if (healing) canvas.drawOval(Skia.XYWHRect(big ? -46 : -24, -10, big ? 92 : 48, 20), stroke('#7BD35A', 3));
+  // Il se retourne vers sa cible quand elle est sur le côté.
+  if (u.aimX < -0.35) canvas.scale(-1, 1);
+  // Élan vers la cible au moment du coup
+  canvas.translate(Math.abs(u.aimX) * u.attack * 8, 0);
+  if (big) drawHeavy(canvas, u, time);
   else drawSoldier(canvas, u, time);
 }
 
@@ -560,6 +705,33 @@ function drawDrop(canvas: SkCanvas, age: number, x: number, y: number, s: number
   } else {
     canvas.drawRRect(rr(x - 6 * s, top - 18 * s, 12 * s, 24 * s, 5 * s), fill('#3A3F4C'));
   }
+}
+
+/** Brume au loin : les choses lointaines se fondent dans la couleur du ciel. */
+function drawHaze(canvas: SkCanvas, state: EpochState, W: number, H: number) {
+  const sky = AGE_THEMES[state.bases[0].age].sky[1];
+  const hor = H * HORIZON;
+  const depth = H * 0.16;
+  const bands = 8;
+  for (let i = 0; i < bands; i++) {
+    const a = 0.42 * (1 - i / bands);
+    const paint = fill(sky);
+    paint.setAlphaf(a);
+    canvas.drawRect(Skia.XYWHRect(0, hor + (depth * i) / bands, W, depth / bands + 1), paint);
+    paint.setAlphaf(1);
+  }
+}
+
+const alphaPaints = new Map<number, SkPaint>();
+function layerAlphaPaint(a: number): SkPaint {
+  const key = Math.round(a * 20);
+  let p = alphaPaints.get(key);
+  if (!p) {
+    p = Skia.Paint();
+    p.setAlphaf(key / 20);
+    alphaPaints.set(key, p);
+  }
+  return p;
 }
 
 // ---------- Image complète ----------
@@ -618,14 +790,37 @@ export function drawEpoch(canvas: SkCanvas, state: EpochState, view: EpochView, 
         canvas.save();
         canvas.translate(p.x, p.y);
         canvas.scale(p.s * (u.kind === 'heavy' ? 1.15 : 1), p.s * (u.kind === 'heavy' ? 1.15 : 1));
-        drawUnit(canvas, u, state.bases[u.side].rage > 0, state.time);
+        // Élan vers l'avant ou l'arrière, selon où est la cible
+        canvas.translate(0, -u.aimZ * u.attack * 5 * p.s);
+        drawUnit(canvas, u, state.bases[u.side].rage > 0, state.bases[u.side].healing > 0, state.time);
         canvas.restore();
         if (u.hp < u.maxHp) {
           const w = 30 * p.s;
-          const y = p.y - (u.kind === 'heavy' ? 120 : 76) * p.s;
+          const y = p.y - (u.kind === 'heavy' ? 140 : 90) * p.s;
           canvas.drawRect(Skia.XYWHRect(p.x - w / 2 - 1, y - 1, w + 2, 6), fill('#2B2238'));
           canvas.drawRect(Skia.XYWHRect(p.x - w / 2, y, w * Math.max(0, u.hp / u.maxHp), 4), fill(TEAM[u.side].light));
         }
+      },
+    });
+  }
+  // Troupes qui tombent à la renverse et s'effacent
+  for (const cp of state.corpses) {
+    items.push({
+      z: cp.unit.z,
+      draw: () => {
+        const p = proj.at(cp.unit.z, cp.unit.x);
+        if (!p) return;
+        const fall = Math.min(1, cp.t / 0.35);
+        const alpha = cp.t < 0.8 ? 1 : Math.max(0, 1 - (cp.t - 0.8) / 0.6);
+        canvas.save();
+        canvas.translate(p.x, p.y);
+        const k = p.s * (cp.unit.kind === 'heavy' ? 1.15 : 1);
+        canvas.scale(k, k);
+        canvas.saveLayer(layerAlphaPaint(alpha));
+        canvas.rotate((cp.unit.side === 0 ? -1 : 1) * fall * 80, 0, 0);
+        drawUnit(canvas, { ...cp.unit, flash: 1 - fall, attack: 0 }, false, false, state.time);
+        canvas.restore();
+        canvas.restore();
       },
     });
   }
@@ -644,6 +839,7 @@ export function drawEpoch(canvas: SkCanvas, state: EpochState, view: EpochView, 
   }
   items.sort((a, b) => b.z - a.z);
   for (const it of items) it.draw();
+  drawHaze(canvas, state, W, H);
 
   // Projectiles
   for (const s of state.shots) {
@@ -653,6 +849,14 @@ export function drawEpoch(canvas: SkCanvas, state: EpochState, view: EpochView, 
     canvas.translate(p.x, p.y);
     drawShotLook(canvas, s.age, s.big, p.s);
     canvas.restore();
+  }
+  // Traces des coups au corps à corps
+  for (const sl of state.slashes) {
+    const p = proj.at(sl.z, sl.x, 34);
+    if (!p) continue;
+    const k = sl.life / 0.25;
+    const r = (14 + (1 - k) * 16) * p.s;
+    canvas.drawArc(Skia.XYWHRect(p.x - r, p.y - r, r * 2, r * 2), sl.side === 0 ? 200 : 20, 140, false, line(rgba('255,255,255', k), Math.max(1.5, 4 * p.s)));
   }
   // Frappes spéciales : ce qui tombe, et une zone rouge au sol pour prévenir
   for (const st of state.strikes) {

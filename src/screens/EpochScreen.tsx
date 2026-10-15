@@ -5,10 +5,10 @@ import Animated, { FadeIn, ZoomIn } from 'react-native-reanimated';
 import { useSharedValue } from 'react-native-reanimated';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { t, type TranslationKey } from '../i18n';
-import { AGES, AGE_ICONS, EVOLVE_XP, LANE, OVERTIME_START, SPECIAL_ICONS, SUDDEN_DEATH, UNIT_ICONS, UNIT_KINDS, turretCost, unitCost } from '../modes/epoch/data';
+import { AGES, AGE_ICONS, EVOLVE_XP, LANE, OVERTIME_START, SKILLS, SPECIAL_ICONS, SUDDEN_DEATH, UNIT_ICONS, UNIT_KINDS, UPGRADES, UPGRADE_MAX, turretCost, unitCost, upgradeCost } from '../modes/epoch/data';
 import { MINIMAP, drawEpoch, makeProjection } from '../modes/epoch/render';
-import { buyTurret, collectCrate, createEpoch, evolve, stepEpoch, trainUnit, useSpecial } from '../modes/epoch/sim';
-import type { EpochEvent, EpochState, UnitKind } from '../modes/epoch/types';
+import { buyTurret, buyUpgrade, collectCrate, createEpoch, evolve, stepEpoch, trainUnit, useSkill, useSpecial } from '../modes/epoch/sim';
+import type { EpochEvent, EpochState, SkillId, UnitKind } from '../modes/epoch/types';
 import { applyEpochDebugHash } from '../platform/debug';
 import { haptics } from '../platform/haptics';
 import { Banner, type BannerData } from '../ui/Banner';
@@ -44,6 +44,10 @@ interface Hud {
   queue: string;
   turret: number;
   special: number;
+  warcry: number;
+  heal: number;
+  /** Niveaux d'amélioration : "attaque,armure,économie,remparts". */
+  upgrades: string;
   rage: number;
   time: number;
   result: EpochState['result'];
@@ -63,6 +67,9 @@ function readHud(s: EpochState): Hud {
     queue: me.queue.join(','),
     turret: me.turret,
     special: Math.ceil(me.special),
+    warcry: Math.ceil(me.skills.warcry),
+    heal: Math.ceil(me.skills.heal),
+    upgrades: UPGRADES.map((u) => me.upgrades[u.id]).join(','),
     rage: Math.ceil(me.rage),
     time: Math.floor(s.time),
     result: s.result,
@@ -104,6 +111,7 @@ export function EpochScreen({ onFinish, onRetry, onMenu }: Props) {
   const touch = useRef({ x: 0, y: 0, camZ: 0, dragging: false, minimap: false }).current;
   const [hud, setHud] = useState<Hud>(() => readHud(stateRef.current));
   const [aiming, setAiming] = useState(false);
+  const [shop, setShop] = useState(false);
   const aimingRef = useRef(false);
   aimingRef.current = aiming;
   const [banner, setBanner] = useState<BannerData | null>(null);
@@ -170,6 +178,9 @@ export function EpochScreen({ onFinish, onRetry, onMenu }: Props) {
           break;
         case 'crate':
           haptics.success();
+          break;
+        case 'skill':
+          if (ev.side === 1) showBanner({ title: `${SKILLS[ev.skill].icon} ${t(`skill.${ev.skill}` as TranslationKey)}`, sub: t('epoch.enemySkill'), tone: 'bad' });
           break;
         case 'over':
           if (ev.won) haptics.success();
@@ -280,6 +291,7 @@ export function EpochScreen({ onFinish, onRetry, onMenu }: Props) {
   const canEvolveNow = hud.age < AGES - 1 && hud.xp >= 1;
   const turretPrice = turretCost(hud.age);
   const turretDone = hud.turret >= hud.age;
+  const levels = hud.upgrades.split(',').map(Number);
 
   return (
     <View
@@ -351,8 +363,38 @@ export function EpochScreen({ onFinish, onRetry, onMenu }: Props) {
 
       <Banner banner={banner} />
 
-      {/* Bas : file de recrutement et boutons */}
+      {/* Bas : améliorations (si ouvertes), file de recrutement, troupes, puis tourelle, améliorations et compétences */}
       <View pointerEvents="box-none" style={[styles.bottom, { bottom: insets.bottom + 10, left: insets.left + 8, right: insets.right + 8 }]}>
+        {shop && (
+          <Animated.View entering={FadeIn.duration(150)} style={styles.shop}>
+            {UPGRADES.map((u, i) => {
+              const level = levels[i];
+              const max = level >= UPGRADE_MAX;
+              const cost = upgradeCost(level);
+              return (
+                <Pressable
+                  key={u.id}
+                  onPress={() => {
+                    if (buyUpgrade(stateRef.current, 0, u.id)) haptics.success();
+                    else haptics.error();
+                  }}
+                  accessibilityRole="button"
+                  style={({ pressed }) => [styles.upCard, (max || hud.gold < cost) && styles.off, pressed && styles.pressed]}
+                >
+                  <Text style={styles.upIcon}>{u.icon}</Text>
+                  <Text style={styles.upName}>{t(`upgrade.${u.id}` as TranslationKey)}</Text>
+                  <Text style={styles.upDesc}>{t(`upgrade.${u.id}.desc` as TranslationKey, { n: Math.round(u.per * 100) })}</Text>
+                  <View style={styles.pips}>
+                    {Array.from({ length: UPGRADE_MAX }, (_, n) => (
+                      <View key={n} style={[styles.pip, n < level && styles.pipOn]} />
+                    ))}
+                  </View>
+                  <Text style={styles.btnCost}>{max ? 'MAX' : `🪙 ${cost}`}</Text>
+                </Pressable>
+              );
+            })}
+          </Animated.View>
+        )}
         <View pointerEvents="none" style={styles.queue}>
           {queue.map((k, i) => (
             <Text key={i} style={[styles.queueIcon, i === 0 && styles.queueFirst]}>
@@ -374,29 +416,51 @@ export function EpochScreen({ onFinish, onRetry, onMenu }: Props) {
               </Pressable>
             );
           })}
+        </View>
+        <View pointerEvents="box-none" style={styles.buttons}>
           <Pressable
             onPress={() => {
               if (buyTurret(stateRef.current, 0)) haptics.success();
               else haptics.error();
             }}
             accessibilityRole="button"
-            style={({ pressed }) => [styles.btn, styles.turret, (turretDone || hud.gold < turretPrice) && styles.off, pressed && styles.pressed]}
+            style={({ pressed }) => [styles.small, styles.turret, (turretDone || hud.gold < turretPrice) && styles.off, pressed && styles.pressed]}
           >
-            <Text style={styles.btnIcon}>🗼</Text>
-            <Text style={styles.btnName}>{t('epoch.turret')}</Text>
-            <Text style={styles.btnCost}>{turretDone ? '✓' : turretPrice}</Text>
+            <Text style={styles.smallIcon}>🗼</Text>
+            <Text style={styles.smallText}>{turretDone ? '✓' : turretPrice}</Text>
           </Pressable>
+          <Pressable onPress={() => setShop((v) => !v)} accessibilityRole="button" style={({ pressed }) => [styles.small, styles.shopBtn, shop && styles.aimingBtn, pressed && styles.pressed]}>
+            <Text style={styles.smallIcon}>🔧</Text>
+            <Text style={styles.smallText}>{t('epoch.upgrades')}</Text>
+          </Pressable>
+          {(['warcry', 'heal'] as SkillId[]).map((k) => {
+            const wait = k === 'warcry' ? hud.warcry : hud.heal;
+            return (
+              <Pressable
+                key={k}
+                onPress={() => {
+                  if (useSkill(stateRef.current, 0, k)) haptics.heavy();
+                  else haptics.error();
+                }}
+                accessibilityRole="button"
+                accessibilityLabel={t(`skill.${k}` as TranslationKey)}
+                style={({ pressed }) => [styles.small, styles.skill, wait > 0 && styles.off, pressed && styles.pressed]}
+              >
+                <Text style={styles.smallIcon}>{SKILLS[k].icon}</Text>
+                <Text style={styles.smallText}>{wait > 0 ? `${wait}s` : t(`skill.${k}` as TranslationKey)}</Text>
+              </Pressable>
+            );
+          })}
           <Pressable
             onPress={() => {
               if (hud.special <= 0) setAiming((a) => !a);
               else haptics.error();
             }}
             accessibilityRole="button"
-            style={({ pressed }) => [styles.btn, styles.special, hud.special > 0 && styles.off, aiming && styles.aimingBtn, pressed && styles.pressed]}
+            style={({ pressed }) => [styles.small, styles.special, hud.special > 0 && styles.off, aiming && styles.aimingBtn, pressed && styles.pressed]}
           >
-            <Text style={styles.btnIcon}>{SPECIAL_ICONS[hud.age]}</Text>
-            <Text style={styles.btnName}>{t('epoch.power')}</Text>
-            <Text style={styles.btnCost}>{hud.special > 0 ? `${hud.special}s` : '!'}</Text>
+            <Text style={styles.smallIcon}>{SPECIAL_ICONS[hud.age]}</Text>
+            <Text style={styles.smallText}>{hud.special > 0 ? `${hud.special}s` : t('epoch.power')}</Text>
           </Pressable>
         </View>
       </View>
@@ -451,6 +515,19 @@ const styles = StyleSheet.create({
   queueIcon: { fontSize: 18, opacity: 0.7 },
   queueFirst: { opacity: 1, fontSize: 22 },
   buttons: { flexDirection: 'row', gap: 6 },
+  small: { flex: 1, alignItems: 'center', borderRadius: 14, borderWidth: 3, borderColor: '#2B2238', borderBottomWidth: 6, paddingVertical: 3 },
+  smallIcon: { fontSize: 18 },
+  smallText: { fontSize: 11, color: '#2B2238', fontFamily: FONT.bold },
+  shopBtn: { backgroundColor: '#FFE38A' },
+  skill: { backgroundColor: '#A8E0C8' },
+  shop: { flexDirection: 'row', gap: 6, backgroundColor: 'rgba(30,24,52,0.92)', borderRadius: 18, borderWidth: 3, borderColor: '#2B2238', padding: 6 },
+  upCard: { flex: 1, alignItems: 'center', backgroundColor: '#F4EEE0', borderRadius: 12, borderWidth: 2, borderColor: '#2B2238', paddingVertical: 6, paddingHorizontal: 2, gap: 2 },
+  upIcon: { fontSize: 22 },
+  upName: { fontSize: 12, color: '#2B2238', fontFamily: FONT.bold },
+  upDesc: { fontSize: 10, color: '#4A3E5E', fontFamily: FONT.semi, textAlign: 'center' },
+  pips: { flexDirection: 'row', gap: 2 },
+  pip: { width: 7, height: 7, borderRadius: 4, backgroundColor: '#C9C2D8' },
+  pipOn: { backgroundColor: '#7BD35A' },
   btn: { flex: 1, alignItems: 'center', borderRadius: 16, borderWidth: 3, borderColor: '#2B2238', borderBottomWidth: 7, paddingVertical: 6 },
   inf: { backgroundColor: '#9EC8FF' },
   archer: { backgroundColor: '#A8E08A' },
