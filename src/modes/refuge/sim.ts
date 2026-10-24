@@ -33,12 +33,17 @@ import {
 } from './balance';
 import { botThink } from './ai';
 import { collideRooms, damageDoor, dist, finish, occupiedRooms, pushOutRect, slowAt } from './combat';
-import { CHARACTERS, CHARACTER_IDS } from './data';
+import { BANKER_GOLD, CHARACTERS, CHARACTER_IDS, WEAPON } from './data';
 import { updateDefenses } from './defense';
 import { createDemon, updateDemons } from './demon';
 import { CENTER, cellTaken, createRooms, doorOutside, doorRect, facingAngle, insideRoom, roomCenter } from './layout';
 import type { ArtifactKind, CharacterId, RefugePad, RefugeRole, RefugeState, RefugeTurret, Room, Survivor } from './types';
 import { endRound } from './wheel';
+
+/** Durée de la mini-cinématique « dévoré ». */
+export const DEVOUR_TIME = 2.6;
+/** Durée de la cinématique de la couronne avant le bilan. */
+export const FINALE_TIME = 3.2;
 
 const BOT_NAMES = ['Léo', 'Mia', 'Sam', 'Inès', 'Tom', 'Zoé'];
 const SHIRTS = ['#FF7A3D', '#4E7BD6', '#B05BD6', '#4FB8B0', '#E0533D', '#7BD35A'];
@@ -75,6 +80,9 @@ export function createRefuge(setup: RefugeSetup = { role: 'survivor', character:
       shirt: isPlayer ? CHARACTERS[character].shirt : SHIRTS[i],
       character,
       inventory: [],
+      weapon: 1,
+      weaponCooldown: 0,
+      shootAnim: 0,
       buildCell: null,
       goal: null,
       path: [],
@@ -99,6 +107,8 @@ export function createRefuge(setup: RefugeSetup = { role: 'survivor', character:
     zombies: [],
     projectiles: [],
     zaps: [],
+    devours: [],
+    finale: null,
     wave: 0,
     waveTimer: 25,
     round: 1,
@@ -135,6 +145,11 @@ export function padOffer(room: Room, pad: RefugePad): { cost: number; level: num
       return room.door.level < DOOR_HP.length - 1 ? { cost: DOOR_COST[room.door.level + 1], level: room.door.level + 1 } : null;
     case 'gen':
       return room.gen.level < GEN_INCOME.length - 1 ? { cost: GEN_COST[room.gen.level + 1], level: room.gen.level + 1 } : null;
+    case 'weapon': {
+      // L'arme est celle de l'occupant de la chambre.
+      const lv = room.weaponLevel;
+      return lv < WEAPON.cost.length - 1 ? { cost: WEAPON.cost[lv + 1], level: lv + 1 } : null;
+    }
     case 'repair':
       return room.repairCooldown <= 0 && room.door.hp < room.door.maxHp ? { cost: room.repairFree ? 0 : REPAIR_COST, level: 0 } : null;
   }
@@ -151,6 +166,9 @@ function buy(state: RefugeState, s: Survivor, room: Room, pad: RefugePad) {
     room.door.hp += room.door.maxHp - before;
   } else if (pad.kind === 'gen') {
     room.gen.level = offer.level;
+  } else if (pad.kind === 'weapon') {
+    room.weaponLevel = offer.level;
+    s.weapon = offer.level;
   } else {
     room.door.hp = Math.min(room.door.maxHp, room.door.hp + room.door.maxHp * REPAIR_RATIO);
     room.repairCooldown = room.repairFree ? REPAIR_COOLDOWN / 2 : REPAIR_COOLDOWN;
@@ -279,6 +297,8 @@ function updateSurvivors(state: RefugeState, input: PlayerInput, dt: number) {
     // Or du générateur : tout l'or si on se tient dessus, une partie sinon.
     const onGen = dist(s.x, s.y, room.gen.x, room.gen.y) < PAD_RADIUS + 6;
     s.gold += GEN_INCOME[room.gen.level] * (onGen ? 1 : OFF_GEN_RATIO) * (room.boosts.turbo > 0 ? 2 : 1) * dt;
+    // Banquiers : de l'or en plus, même loin du trône.
+    for (const a of room.allies) if (a.kind === 'banker') s.gold += BANKER_GOLD * a.power * dt;
     for (const pad of room.pads) {
       if (dist(s.x, s.y, pad.x, pad.y) < PAD_RADIUS) {
         pad.hold += dt;
@@ -479,6 +499,12 @@ export const isPaused = (state: RefugeState) => state.wheel !== null || state.po
 
 export function stepRefuge(state: RefugeState, input: PlayerInput, dt: number) {
   if (isPaused(state)) return;
+  // Cinématiques : elles avancent même après la fin de la partie.
+  for (let i = state.devours.length - 1; i >= 0; i--) {
+    state.devours[i].t += dt;
+    if (state.devours[i].t > DEVOUR_TIME) state.devours.splice(i, 1);
+  }
+  if (state.finale) state.finale.t += dt;
   state.time += dt;
   if (state.phase !== 'over') {
     state.phaseTimer -= dt;

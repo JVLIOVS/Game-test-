@@ -1,8 +1,9 @@
 import { spawnText } from '../../game/systems/effects';
 import { FX_COLORS } from '../../game/fxColors';
 import { ROUNDS } from './balance';
-import { BOOST_TIME, CHARACTERS, LUCK_FULL, SHIELD_RATIO, WHEEL, goldPrize, wheelWeight } from './data';
-import type { ArtifactKind, RefugeState, Room, Survivor, WheelPrize } from './types';
+import { ALLY_MAX, BOOST_TIME, CHARACTERS, LUCK_FULL, SHIELD_RATIO, WEAPON, WHEEL, goldPrize, wheelWeight } from './data';
+import { cellTaken } from './layout';
+import type { AllyKind, ArtifactKind, RefugeState, Room, Survivor, WheelPrize } from './types';
 
 // Roue de fin de manche : chaque survivant encore en vie la fait tourner.
 // Mieux on a défendu pendant la manche (zombies tués, Démon blessé ou repoussé, porte en bon état),
@@ -32,6 +33,26 @@ function randomArtifact(room: Room, s: Survivor): ArtifactKind {
   return pool[Math.floor(Math.random() * pool.length)];
 }
 
+/** Compagnon gagné au dernier tirage (pour l'affichage). */
+let ally: AllyKind | null = null;
+
+/** Installe un compagnon sur la meilleure case libre (près de la porte). */
+function placeAlly(room: Room, kind: AllyKind, round: number) {
+  if (room.allies.length >= ALLY_MAX) return false;
+  let best = -1;
+  let bestRow = -1;
+  room.cells.forEach((c, i) => {
+    if (!cellTaken(room, i) && c.row > bestRow) {
+      bestRow = c.row;
+      best = i;
+    }
+  });
+  if (best < 0) return false;
+  const c = room.cells[best];
+  room.allies.push({ kind, cell: best, x: c.x, y: c.y, cooldown: 0, power: 1 + round * 0.35, anim: 0, aimX: 1 });
+  return true;
+}
+
 /** Applique le gain ; renvoie l'artefact gagné s'il y en a un. */
 function applyPrize(state: RefugeState, room: Room, s: Survivor, prize: WheelPrize): ArtifactKind | null {
   const bonusGold = (k: number) => {
@@ -46,11 +67,22 @@ function applyPrize(state: RefugeState, room: Room, s: Survivor, prize: WheelPri
     case 'repair':
       room.door.hp = room.door.maxHp;
       return null;
-    case 'turbo':
-      room.boosts.turbo += BOOST_TIME.turbo;
+    case 'ally': {
+      // Un compagnon s'installe sur une case libre, près de la porte si possible.
+      const kinds: AllyKind[] = ['guard', 'archer', 'banker'];
+      const kind = kinds[Math.floor(Math.random() * kinds.length)];
+      if (!placeAlly(room, kind, state.round)) {
+        bonusGold(1);
+        return null;
+      }
+      ally = kind;
       return null;
-    case 'power':
-      room.boosts.power += BOOST_TIME.power;
+    }
+    case 'weapon':
+      if (s.weapon < WEAPON.damage.length - 1) {
+        s.weapon++;
+        room.weaponLevel = s.weapon;
+      } else bonusGold(1);
       return null;
     case 'storm':
       room.boosts.storm += BOOST_TIME.storm;
@@ -77,9 +109,10 @@ export function endRound(state: RefugeState) {
     if (room.door.broken) continue;
     const luck = roundLuck(room, s);
     const prize = WHEEL[spinWheel(luck)].prize;
+    ally = null;
     const artifact = applyPrize(state, room, s, prize);
     // Le joueur voit sa roue tourner (la partie est en pause pendant ce temps).
-    if (s.isPlayer) state.wheel = { id: state.nextId++, prize, artifact, luck, round: state.round };
+    if (s.isPlayer) state.wheel = { id: state.nextId++, prize, artifact, ally, luck, round: state.round };
   }
   for (const room of state.rooms) room.roundScore = 0;
   state.events.push({ type: 'roundEnd', round: state.round });

@@ -1,5 +1,6 @@
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import { createAudioPlayer, setAudioModeAsync, type AudioPlayer } from 'expo-audio';
+import { Platform } from 'react-native';
 
 // Musiques et bruitages, tous fabriqués par scripts/audio (aucun son téléchargé).
 // Chaque bruitage a quelques lecteurs pour pouvoir se superposer, et un délai minimal
@@ -88,6 +89,8 @@ let currentMusic: MusicName | null = null;
 let musicOn = true;
 let sfxOn = true;
 let ready = false;
+/** Sur le web, aucun son avant le premier toucher (sinon le navigateur refuse et se plaint). */
+let unlocked = Platform.OS !== 'web';
 const listeners = new Set<() => void>();
 
 function pool(name: SfxName) {
@@ -105,7 +108,7 @@ function save() {
 }
 
 function startMusic() {
-  if (!musicPlayer || !musicOn) return;
+  if (!musicPlayer || !musicOn || !unlocked) return;
   try {
     musicPlayer.play();
   } catch {
@@ -138,7 +141,7 @@ export const audio = {
 
   /** Joue un bruitage. */
   sfx(name: SfxName, volume = 1) {
-    if (!sfxOn) return;
+    if (!sfxOn || !unlocked) return;
     const p = pool(name);
     const now = Date.now();
     if (now - p.last < (GAP[name] ?? 40)) return;
@@ -189,6 +192,7 @@ export const audio = {
 
   /** Premier toucher de l'écran : relance la musique bloquée par le navigateur. */
   unlock() {
+    unlocked = true;
     if (musicPlayer && musicOn && !musicPlayer.playing) startMusic();
   },
 

@@ -1,4 +1,5 @@
 import { PAD_RADIUS } from './balance';
+import { guards } from './combat';
 import { cellTaken, doorOutside, roomCenter } from './layout';
 import { buildTurret, newTurretCost, padOffer, placeArtifact, turretOffer } from './sim';
 import type { ArtifactKind, RefugePad, RefugeState, Room, Survivor } from './types';
@@ -35,6 +36,8 @@ function score(state: RefugeState, s: Survivor, pad: RefugePad): number {
       return 45 + (underAttack ? 40 : 0) + (1 - hpRatio) * 25 - room.door.level * 4;
     case 'gen':
       return (sinceSiege < 160 ? 60 : 20) - room.gen.level * 9;
+    case 'weapon':
+      return 34 - room.weaponLevel * 6;
   }
 }
 
@@ -119,6 +122,12 @@ export function botThink(state: RefugeState, s: Survivor, dt: number) {
     const cell = bestCell(room, false);
     if (cell !== null && consider(54 - room.turrets.length * 7 + (underAttack ? 10 : 0), room.cells[cell].x, room.cells[cell].y)) plans.set(s, { cell, artifact: null });
   }
-  // Rien d'intéressant à acheter : on reste sur le générateur pour gagner plus d'or.
-  s.goal = goal ?? { x: room.gen.x, y: room.gen.y + PAD_RADIUS * 0.3 };
+  if (goal) {
+    s.goal = goal;
+    return;
+  }
+  // Des ennemis à la porte : il quitte son trône pour tirer lui-même. Sinon, il reste assis pour l'or.
+  const attackers = state.zombies.filter((z) => guards(room, z.x, z.y)).length + (guards(room, state.demon.x, state.demon.y) ? 3 : 0);
+  const front = room.pads.find((p) => p.kind === 'weapon')!;
+  s.goal = attackers >= 3 ? { x: front.x + (room.doorSide === 'bottom' ? 0 : 0), y: front.y + (room.doorSide === 'bottom' ? -40 : 40) } : { x: room.gen.x, y: room.gen.y + PAD_RADIUS * 0.3 };
 }

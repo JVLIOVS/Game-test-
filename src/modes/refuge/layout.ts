@@ -34,7 +34,9 @@ function makeRoom(id: number, x: number, y: number, doorSide: 'top' | 'bottom'):
   const gen = at(ROOM_W / 2, 32);
   const genPad = cellAt(2, 1);
   const repair = cellAt(3, 1);
-  const doorPad = at(ROOM_W / 2, CELL / 2 + (GRID_ROWS - 1) * CELL);
+  // Devant : la porte et ton arme, côte à côte.
+  const doorPad = cellAt(3, GRID_ROWS - 1);
+  const weaponPad = cellAt(2, GRID_ROWS - 1);
   return {
     id,
     inner,
@@ -46,11 +48,14 @@ function makeRoom(id: number, x: number, y: number, doorSide: 'top' | 'bottom'):
       { kind: 'gen', ...genPad, hold: 0 },
       { kind: 'door', ...doorPad, hold: 0 },
       { kind: 'repair', ...repair, hold: 0 },
+      { kind: 'weapon', ...weaponPad, hold: 0 },
     ],
     repairCooldown: 0,
     owner: null,
     cells,
     artifacts: [],
+    allies: [],
+    weaponLevel: 1,
     boosts: { power: 0, turbo: 0, storm: 0, stormCooldown: 0 },
     shield: 0,
     shieldMax: 0,
@@ -90,6 +95,7 @@ export const insideRoom = (room: Room, x: number, y: number, margin = 0) =>
 export const facingAngle = (room: Room) => (room.doorSide === 'bottom' ? Math.PI / 2 : -Math.PI / 2);
 
 /** Une case est-elle occupée (tourelle ou artefact) ? */
-export const cellTaken = (room: Room, cell: number) => room.turrets.some((t) => t.cell === cell) || room.artifacts.some((a) => a.cell === cell);
+export const cellTaken = (room: Room, cell: number) =>
+  room.turrets.some((t) => t.cell === cell) || room.artifacts.some((a) => a.cell === cell) || room.allies.some((a) => a.cell === cell);
 
 export const roomCenter = (room: Room) => ({ x: room.inner.x + room.inner.w / 2, y: room.inner.y + room.inner.h / 2 });

@@ -2,7 +2,7 @@ import { addTrauma, spawnBurst, spawnText } from '../../game/systems/effects';
 import { FX_COLORS } from '../../game/fxColors';
 import type { Zombie } from '../../game/types';
 import { DEMON_ARMOR, TURRET_GUARD, ZOMBIE_BOUNTY } from './balance';
-import { FROST_SLOW, HIDE_MULT } from './data';
+import { FROST_SLOW, GUARD, HIDE_MULT } from './data';
 import { doorOutside, doorRect, insideRoom } from './layout';
 import type { Demon, Rect, RefugeState, Room, Survivor } from './types';
 
@@ -93,6 +93,9 @@ export function exitWaypoint(state: RefugeState, m: { x: number; y: number }, ra
 /** Dégâts sur une porte : le bouclier magique encaisse d'abord. */
 export function damageDoor(state: RefugeState, room: Room, amount: number, quiet = false) {
   if (room.door.broken) return;
+  // Chaque garde dans la chambre fait encaisser moins de dégâts à la porte.
+  const guards = room.allies.filter((a) => a.kind === 'guard').length;
+  if (guards) amount *= Math.max(0.4, 1 - GUARD.block * guards);
   if (room.shield > 0) {
     const absorbed = Math.min(room.shield, amount);
     room.shield -= absorbed;
@@ -171,6 +174,8 @@ export function eliminate(state: RefugeState, s: Survivor) {
   spawnBurst(state, s.x, s.y, 20, 24, 'goo', ['#C2352B', '#8A1E1E', '#FF5A5A'], 1.4);
   addTrauma(state, 0.7);
   state.events.push({ type: 'eliminated', survivorId: s.id, name: s.name, isPlayer: s.isPlayer });
+  // Petit cadre en bas de l'écran : on le voit se faire dévorer (une seule à la fois, la plus récente).
+  state.devours = [{ survivorId: s.id, t: 0 }];
   if (state.survivors.every((o) => !o.alive)) finish(state);
 }
 
@@ -189,6 +194,16 @@ export function finish(state: RefugeState) {
     rank = player.alive ? 1 : state.survivors.length - player.eliminatedAt + 1;
     won = rank === 1;
   }
+  // Le vainqueur reçoit sa couronne : toi si tu as gagné, sinon le survivant le mieux protégé, ou le Démon.
+  const alive = state.survivors.filter((s) => s.alive);
+  let winner = -1;
+  if (state.role === 'survivor' && won) winner = 0;
+  else if (state.role === 'survivor' || !won) {
+    const best = alive.sort((a, b) => (b.roomId !== null ? state.rooms[b.roomId].door.hp : 0) - (a.roomId !== null ? state.rooms[a.roomId].door.hp : 0))[0];
+    winner = best ? best.id : -1;
+  }
+  if (state.demon.hp <= 0 && winner === -1) winner = alive[0]?.id ?? 0;
+  state.finale = { winner, t: 0 };
   state.phase = 'over';
   state.wheel = null;
   state.powerChoice = null;

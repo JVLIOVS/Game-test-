@@ -1,8 +1,8 @@
 import { spawnBurst } from '../../game/systems/effects';
 import { FX_COLORS } from '../../game/fxColors';
-import { DEMON_RADIUS, TURRET } from './balance';
+import { DEMON_RADIUS, PAD_RADIUS, TURRET } from './balance';
 import { allDemons, damageDemon, damageDoor, damageZombie, dist, guards } from './combat';
-import { HEAL_RATE, MEGA, STORM, TESLA } from './data';
+import { ALLY_ARCHER, GUARD, HEAL_RATE, MEGA, STORM, TESLA, WEAPON, WEAPON_STYLE } from './data';
 import type { Demon, RefugeState, Room } from './types';
 
 // Défenses des refuges : tourelles, artefacts (méga-tourelle, bobine Tesla, givre, soin),
@@ -48,6 +48,56 @@ function zap(state: RefugeState, x1: number, y1: number, x2: number, y2: number)
   state.zaps.push({ points, life: 0.25 });
 }
 
+/** Tir d'une arme (survivant ou compagnon) : un projectile qui file vers sa cible. */
+function shoot(state: RefugeState, room: Room, from: { x: number; y: number }, target: Target, damage: number, style: 'bolt' | 'tower' | 'magic' | 'bow1') {
+  const a = Math.atan2(target.y - from.y, target.x - from.x);
+  state.projectiles.push({ x: from.x, y: from.y - 30, vx: Math.cos(a) * ARROW_SPEED, vy: Math.sin(a) * ARROW_SPEED, life: 1, damage, targetId: target.id, style, splash: 0, roomId: room.id });
+  state.events.push({ type: 'fire', roomId: room.id, kind: 'arrow' });
+}
+
+function nearest(from: { x: number; y: number }, enemies: Target[], range: number) {
+  let best: Target | null = null;
+  let bestD = range;
+  for (const e of enemies) {
+    const d = dist(from.x, from.y, e.x, e.y);
+    if (d < bestD) {
+      bestD = d;
+      best = e;
+    }
+  }
+  return best;
+}
+
+/** Quand il quitte son trône, le survivant devient lui-même une tourelle. Les compagnons aident aussi. */
+function updateFighters(state: RefugeState, room: Room, enemies: Target[], mult: number, dt: number) {
+  const owner = room.owner !== null ? state.survivors[room.owner] : null;
+  if (owner && owner.alive) {
+    owner.weaponCooldown -= dt;
+    owner.shootAnim = Math.max(0, owner.shootAnim - dt * 4);
+    const onThrone = dist(owner.x, owner.y, room.gen.x, room.gen.y) < PAD_RADIUS + 6;
+    if (!onThrone && owner.weaponCooldown <= 0) {
+      const target = nearest(owner, enemies, WEAPON.range);
+      if (target) {
+        owner.weaponCooldown = WEAPON.interval;
+        owner.shootAnim = 1;
+        owner.dirX = target.x >= owner.x ? 1 : -1;
+        shoot(state, room, owner, target, WEAPON.damage[owner.weapon] * mult, WEAPON_STYLE[owner.character]);
+      }
+    }
+  }
+  for (const ally of room.allies) {
+    ally.anim = Math.max(0, ally.anim - dt * 4);
+    ally.cooldown -= dt;
+    if (ally.kind !== 'archer' || ally.cooldown > 0) continue;
+    const target = nearest(ally, enemies, ALLY_ARCHER.range);
+    if (!target) continue;
+    ally.cooldown = ALLY_ARCHER.interval;
+    ally.anim = 1;
+    ally.aimX = target.x >= ally.x ? 1 : -1;
+    shoot(state, room, ally, target, ALLY_ARCHER.damage * ally.power * mult, 'bow1');
+  }
+}
+
 function updateRoom(state: RefugeState, room: Room, dt: number) {
   room.repairCooldown = Math.max(0, room.repairCooldown - dt);
   room.door.hitFlash = Math.max(0, room.door.hitFlash - dt * 5);
@@ -63,6 +113,9 @@ function updateRoom(state: RefugeState, room: Room, dt: number) {
   }
   const active = room.owner !== null && state.survivors[room.owner].alive && !room.door.broken;
   if (!active) return;
+  // Garde : il rafistole la porte en continu.
+  const guards = room.allies.filter((a) => a.kind === 'guard').length;
+  if (guards && room.stun <= 0) room.door.hp = Math.min(room.door.maxHp, room.door.hp + room.door.maxHp * GUARD.repair * guards * dt);
   // Totem de soin
   if (room.artifacts.some((a) => a.kind === 'heal') && room.stun <= 0) room.door.hp = Math.min(room.door.maxHp, room.door.hp + room.door.maxHp * HEAL_RATE * dt);
 }
@@ -86,6 +139,7 @@ function updateRoomDefenses(state: RefugeState, room: Room, dt: number) {
       hit(state, e.id, STORM.damage * mult, room);
     }
   }
+  updateFighters(state, room, enemies, mult, dt);
   if (!enemies.length) {
     for (const a of room.artifacts) a.cooldown = Math.max(0, a.cooldown - dt);
     for (const t of room.turrets) t.cooldown -= dt;

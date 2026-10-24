@@ -1,13 +1,13 @@
-import { PaintStyle, Skia, StrokeCap, StrokeJoin, type SkCanvas, type SkFont, type SkPaint, type SkPath } from '@shopify/react-native-skia';
+import { ClipOp, PaintStyle, Skia, StrokeCap, StrokeJoin, type SkCanvas, type SkFont, type SkPaint, type SkPath } from '@shopify/react-native-skia';
 import type { JoystickState } from '../../input/joystick';
 import { drawFloatingTexts, drawOutlinedText, drawParticles, drawProjectile } from '../../render/fx';
 import { PALETTE as C, fill, layerAlpha, stroke } from '../../render/palette';
 import { drawHpBar, drawShadow, drawZombie } from '../../render/sprites';
 import { ARENA_H, ARENA_W, ARRIVAL_TIME, CELL, DEMON_RADIUS, PAD_RADIUS, TURRET, WALL } from './balance';
 import { CENTER, cellTaken, doorRect } from './layout';
-import { ROAR } from './data';
-import { padOffer, playerSurvivor, turretOffer } from './sim';
-import type { Demon, PlacedArtifact, RefugePad, RefugeState, RefugeTurret, Room, Survivor } from './types';
+import { ALLIES, ROAR } from './data';
+import { DEVOUR_TIME, padOffer, playerSurvivor, turretOffer } from './sim';
+import type { Ally, Demon, PlacedArtifact, RefugePad, RefugeState, RefugeTurret, Room, Survivor } from './types';
 
 // Rendu du mode Refuges : arène sombre, refuges éclairés de l'intérieur, portes qui
 // changent d'aspect à chaque niveau, tourelles qui se transforment, Démon menaçant.
@@ -80,24 +80,45 @@ function drawDoor(canvas: SkCanvas, room: Room) {
   }
 }
 
+/** Le trône : s'y asseoir rapporte l'or. Il s'embellit à chaque niveau (bois, pierre, bronze, or, or et pierres). */
+const THRONE = [
+  { wood: '#8A5A3A', trim: '#6A4A2A', cushion: '#B0452A' },
+  { wood: '#8A5A3A', trim: '#6A4A2A', cushion: '#B0452A' },
+  { wood: '#8E929E', trim: '#6E7280', cushion: '#4E7BD6' },
+  { wood: '#B87A3A', trim: '#8A5A2A', cushion: '#7E3AA3' },
+  { wood: '#E8B830', trim: '#B88A1E', cushion: '#C2352B' },
+  { wood: '#F4CC40', trim: '#C8962A', cushion: '#7E1830' },
+  { wood: '#FFE070', trim: '#D8A030', cushion: '#5A2A86' },
+];
+
 function drawGenerator(canvas: SkCanvas, room: Room) {
   const g = room.gen;
+  const th = THRONE[Math.min(THRONE.length - 1, g.level)];
+  const back = room.doorSide === 'bottom' ? -1 : 1; // le dossier est du côté du fond de la chambre
   canvas.save();
   canvas.translate(g.x, g.y);
-  canvas.drawRRect(Skia.RRectXY(Skia.XYWHRect(-24, -34, 48, 40), 8, 8), fill(C.outline));
-  canvas.drawRRect(Skia.RRectXY(Skia.XYWHRect(-21, -31, 42, 34), 6, 6), fill('#6E7A86'));
-  // Roue dentée qui tourne plus vite à chaque niveau
-  canvas.save();
-  canvas.translate(0, -14);
-  canvas.rotate(g.spin * 120, 0, 0);
-  for (let i = 0; i < 6; i++) {
-    canvas.rotate(60, 0, 0);
-    canvas.drawRect(Skia.XYWHRect(-3, -14, 6, 6), fill(C.chestBand));
+  // Halo royal à partir de l'or
+  if (g.level >= 4) canvas.drawCircle(0, -14, 34 + Math.sin(g.spin * 2) * 3, fill('rgba(255,210,90,0.22)'));
+  // Dossier haut, avec des pointes comme une couronne
+  const by = back < 0 ? -62 : -30;
+  canvas.drawRRect(Skia.RRectXY(Skia.XYWHRect(-22, by, 44, 40), 8, 8), fill(C.outline));
+  canvas.drawRRect(Skia.RRectXY(Skia.XYWHRect(-19, by + 3, 38, 35), 6, 6), fill(th.wood));
+  for (const px of [-14, 0, 14]) {
+    canvas.drawPath(cached(`thronePeak${px}`, (b) => b.moveTo(px - 6, 0).lineTo(px, -12).lineTo(px + 6, 0).close()), fill(th.trim));
   }
-  canvas.drawCircle(0, 0, 9, fill(C.chestBand));
-  canvas.drawCircle(0, 0, 4, fill(C.outline));
+  canvas.save();
+  canvas.translate(0, by);
+  for (const px of [-14, 0, 14]) canvas.drawPath(cached(`thronePeakB${px}`, (b) => b.moveTo(px - 6, 2).lineTo(px, -10).lineTo(px + 6, 2).close()), fill(th.wood));
+  if (g.level >= 5) for (const px of [-14, 0, 14]) canvas.drawCircle(px, -4, 3, fill(px === 0 ? '#5BE0FF' : '#E0533D'));
   canvas.restore();
-  for (let i = 0; i < g.level; i++) canvas.drawCircle(-15 + i * 6, 0, 2.2, fill('#FFB020'));
+  canvas.drawRRect(Skia.RRectXY(Skia.XYWHRect(-12, by + 9, 24, 24), 5, 5), fill(th.cushion));
+  // Siège et accoudoirs
+  canvas.drawRRect(Skia.RRectXY(Skia.XYWHRect(-26, -16, 52, 24), 8, 8), fill(C.outline));
+  canvas.drawRRect(Skia.RRectXY(Skia.XYWHRect(-23, -13, 46, 18), 6, 6), fill(th.wood));
+  canvas.drawRRect(Skia.RRectXY(Skia.XYWHRect(-16, -12, 32, 12), 5, 5), fill(th.cushion));
+  for (const ax of [-26, 18]) canvas.drawRRect(Skia.RRectXY(Skia.XYWHRect(ax, -22, 8, 22), 3, 3), fill(th.trim));
+  // Petites pièces : le niveau du trône
+  for (let i = 0; i < g.level; i++) canvas.drawCircle(-15 + i * 6, 12, 2.4, fill('#FFD25A'));
   canvas.restore();
 }
 
@@ -497,7 +518,13 @@ function drawPad(canvas: SkCanvas, room: Room, pad: RefugePad, gold: number, fon
     canvas.drawRect(Skia.XYWHRect(-8, -12, 16, 22), ic);
     canvas.drawCircle(4, 0, 2, fill(C.outline));
   } else if (pad.kind === 'gen') {
-    canvas.drawPath(cached('bolt', (b) => b.moveTo(2, -13).lineTo(-7, 2).lineTo(0, 2).lineTo(-2, 13).lineTo(7, -3).lineTo(0, -3).close()), fill(C.chestBand));
+    // Couronne : améliorer le trône
+    canvas.drawPath(cached('crownIcon', (b) => b.moveTo(-11, 7).lineTo(-12, -7).lineTo(-5, -1).lineTo(0, -10).lineTo(5, -1).lineTo(12, -7).lineTo(11, 7).close()), fill('#FFD25A'));
+  } else if (pad.kind === 'weapon') {
+    // Arc : améliorer ton arme
+    canvas.drawPath(cached('bowIcon', (b) => b.moveTo(-4, -12).quadTo(10, 0, -4, 12)), stroke('#FFFFFF', 3));
+    canvas.drawLine(-4, -12, -4, 12, stroke('#FFFFFF', 1.5));
+    canvas.drawLine(-8, 0, 10, 0, stroke('#FFD25A', 2.5));
   } else if (pad.kind === 'repair') {
     canvas.drawRect(Skia.XYWHRect(-3, -11, 6, 22), fill('#7BD35A'));
     canvas.drawRect(Skia.XYWHRect(-11, -3, 22, 6), fill('#7BD35A'));
@@ -521,6 +548,54 @@ function drawTurretUpgrade(canvas: SkCanvas, room: Room, t: RefugeTurret, gold: 
 // ---------- Survivants : chaque personnage a son allure ----------
 
 const HAIRS = ['#5A3A22', '#2B2238', '#C8783A', '#E8C468', '#7A4A2A', '#B0452A'];
+
+/** Compagnon : garde (casque, lance, bouclier), archère (capuche, arc), banquier (haut-de-forme, sac d'or). */
+function drawAlly(canvas: SkCanvas, a: Ally, time: number) {
+  const ol = fill(C.outline);
+  const bob = Math.sin(time * 3 + a.cell) * 1.2;
+  canvas.save();
+  canvas.translate(a.x, a.y);
+  canvas.scale(0.82 * a.aimX, 0.82);
+  canvas.drawOval(Skia.XYWHRect(-14, -5, 28, 10), fill(C.shadow));
+  canvas.translate(0, bob);
+  for (const lx of [-6, 6]) {
+    canvas.drawCircle(lx, -3, 6, ol);
+    canvas.drawCircle(lx, -3, 4.5, fill('#3A3F4C'));
+  }
+  canvas.drawRRect(Skia.RRectXY(Skia.XYWHRect(-14, -34, 28, 30), 10, 10), ol);
+  canvas.drawRRect(Skia.RRectXY(Skia.XYWHRect(-12.5, -32.5, 25, 27), 9, 9), fill(ALLIES[a.kind].shirt));
+  canvas.drawCircle(0, -46, 14, ol);
+  canvas.drawCircle(0, -46, 12, fill(C.skin));
+  canvas.drawCircle(4, -45, 3.6, fill(C.white));
+  canvas.drawCircle(10, -45, 3.6, fill(C.white));
+  canvas.drawCircle(5, -44.6, 1.8, ol);
+  canvas.drawCircle(11, -44.6, 1.8, ol);
+  if (a.kind === 'guard') {
+    canvas.drawOval(Skia.XYWHRect(-14, -64, 28, 20), ol);
+    canvas.drawOval(Skia.XYWHRect(-12.5, -62.5, 25, 17), fill('#AEB6C2'));
+    canvas.drawRect(Skia.XYWHRect(14, -70, 3, 66), fill('#8A5A3A'));
+    canvas.drawPath(cached('spear', (b) => b.moveTo(11, -70).lineTo(15.5, -82).lineTo(20, -70).close()), fill('#D6DCE6'));
+    canvas.drawCircle(-14, -22, 10, ol);
+    canvas.drawCircle(-14, -22, 8, fill('#4E7BD6'));
+  } else if (a.kind === 'archer') {
+    canvas.drawPath(cached('hood', (b) => b.moveTo(-15, -44).quadTo(0, -72, 15, -44).lineTo(10, -50).quadTo(0, -60, -10, -50).close()), fill('#2E8A3A'));
+    canvas.save();
+    canvas.translate(14, -28);
+    canvas.drawPath(cached('allyBow', (b) => b.moveTo(-2, -16).quadTo(12, 0, -2, 16)), stroke(C.outline, 4));
+    canvas.drawPath(cached('allyBow', (b) => b.moveTo(-2, -16).quadTo(12, 0, -2, 16)), stroke('#A8703A', 2.5));
+    canvas.drawLine(-2 - a.anim * 5, -16, -2 - a.anim * 5, 16, stroke('#F1E3C6', 1));
+    canvas.restore();
+  } else {
+    canvas.drawRect(Skia.XYWHRect(-11, -76, 22, 18), ol);
+    canvas.drawRect(Skia.XYWHRect(-9.5, -74.5, 19, 15), fill('#2B2238'));
+    canvas.drawRect(Skia.XYWHRect(-15, -60, 30, 4), ol);
+    canvas.drawRect(Skia.XYWHRect(-9.5, -64, 19, 3), fill('#C2352B'));
+    canvas.drawCircle(14, -16, 9, ol);
+    canvas.drawCircle(14, -16, 7.5, fill('#C8A060'));
+    canvas.drawCircle(14, -16, 3, fill('#FFD25A'));
+  }
+  canvas.restore();
+}
 
 function drawSurvivor(canvas: SkCanvas, s: Survivor, time: number) {
   const walking = s.walkTime > 0;
@@ -616,6 +691,104 @@ function drawSurvivor(canvas: SkCanvas, s: Survivor, time: number) {
   canvas.restore();
 }
 
+/** La couronne descend du ciel et se pose sur la tête du vainqueur, dans une pluie d'étincelles. */
+function drawCrown(canvas: SkCanvas, state: RefugeState) {
+  const f = state.finale!;
+  const w = f.winner >= 0 ? state.survivors[f.winner] : state.demon;
+  const headY = w.y - (f.winner >= 0 ? 72 : 150);
+  const land = Math.min(1, f.t / 1.1);
+  const ease = 1 - Math.pow(1 - land, 3);
+  const y = headY - (1 - ease) * 260;
+  const bounce = land >= 1 ? Math.sin(Math.min(1, (f.t - 1.1) / 0.4) * Math.PI) * 6 : 0;
+  // Rayons de lumière derrière
+  if (land >= 1) {
+    canvas.save();
+    canvas.translate(w.x, headY);
+    canvas.rotate(f.t * 30, 0, 0);
+    for (let i = 0; i < 10; i++) {
+      canvas.rotate(36, 0, 0);
+      canvas.drawPath(cached('ray', (b) => b.moveTo(-8, 0).lineTo(0, -120).lineTo(8, 0).close()), fill('rgba(255,225,120,0.28)'));
+    }
+    canvas.restore();
+  }
+  canvas.save();
+  canvas.translate(w.x, y - bounce);
+  const sc = f.winner >= 0 ? 1 : 1.6;
+  canvas.scale(sc, sc);
+  canvas.drawPath(cached('crownBig', (b) => b.moveTo(-20, 8).lineTo(-23, -14).lineTo(-11, -4).lineTo(0, -20).lineTo(11, -4).lineTo(23, -14).lineTo(20, 8).close()), stroke(C.outline, 5));
+  canvas.drawPath(cached('crownBig', (b) => b), fill('#FFD25A'));
+  canvas.drawRect(Skia.XYWHRect(-20, 2, 40, 6), fill('#E8B830'));
+  canvas.drawCircle(0, -4, 4, fill('#E0533D'));
+  canvas.drawCircle(-12, 0, 3, fill('#5BE0FF'));
+  canvas.drawCircle(12, 0, 3, fill('#7BD35A'));
+  canvas.restore();
+  // Étincelles quand elle se pose
+  if (land >= 1 && f.t < 2.6) {
+    for (let i = 0; i < 12; i++) {
+      const a = (i / 12) * Math.PI * 2 + f.t;
+      const r = 30 + (f.t - 1.1) * 80;
+      canvas.drawCircle(w.x + Math.cos(a) * r, headY + Math.sin(a) * r * 0.6, 3.5, fill(i % 2 ? '#FFFFFF' : '#FFD25A'));
+    }
+  }
+}
+
+/** Petit cadre en bas de l'écran : le Démon surgit et dévore le survivant trouvé (2 à 3 secondes). */
+function drawDevour(canvas: SkCanvas, state: RefugeState, survivorId: number, t: number, view: RefugeView, font: SkFont | null) {
+  const s = state.survivors[survivorId];
+  const size = Math.min(150, view.width * 0.36);
+  const x = 12;
+  const y = view.height - size - 250;
+  const appear = Math.max(0, Math.min(1, t / 0.2, (DEVOUR_TIME - t) / 0.3));
+  if (appear <= 0) return;
+  canvas.save();
+  canvas.translate(x + size / 2, y + size / 2);
+  canvas.scale(appear, appear);
+  canvas.translate(-size / 2, -size / 2);
+  canvas.drawRRect(Skia.RRectXY(Skia.XYWHRect(-4, -4, size + 8, size + 8), 16, 16), fill(C.outline));
+  canvas.drawRRect(Skia.RRectXY(Skia.XYWHRect(0, 0, size, size), 13, 13), fill('#3A1420'));
+  canvas.save();
+  canvas.clipRRect(Skia.RRectXY(Skia.XYWHRect(0, 0, size, size), 13, 13), ClipOp.Intersect, true);
+  canvas.drawRect(Skia.XYWHRect(0, size * 0.72, size, size * 0.28), fill('#5A2A30'));
+  const k = size / 150;
+  const eaten = t > 1.55;
+  // Le survivant tremble de peur
+  if (!eaten) {
+    canvas.save();
+    canvas.translate(size * 0.3 + Math.sin(t * 60) * 2 * k, size * 0.86);
+    canvas.scale(k * 1.15, k * 1.15);
+    drawSurvivor(canvas, { ...s, x: 0, y: 0, alive: true, walkTime: 0, shootAnim: 0, dirX: 1 }, state.time);
+    canvas.restore();
+    if (t < 1) drawBang(canvas, size * 0.3, size * 0.2, k);
+  }
+  // Le Démon arrive par la droite, gueule ouverte, puis croque
+  const enter = Math.min(1, Math.max(0, (t - 0.4) / 0.6));
+  const lunge = t > 1.2 && t < 1.7 ? Math.sin(((t - 1.2) / 0.5) * Math.PI) : 0;
+  const dx = size * (1.35 - 0.55 * enter) - lunge * size * 0.18;
+  const fake: Demon = { ...state.demon, x: 0, y: 0, dirX: -1, lunge, walkTime: enter < 1 ? t * 2 : 0, rise: 1, cloneTime: 0, hitFlash: 0, state: 'attack' };
+  canvas.save();
+  canvas.translate(dx, size * 0.92);
+  canvas.scale(k * 0.9, k * 0.9);
+  drawDemon(canvas, fake, state.time);
+  canvas.restore();
+  // Croc ! éclair blanc et gouttes
+  if (t > 1.45 && t < 1.75) canvas.drawRect(Skia.XYWHRect(0, 0, size, size), fill(rgba('255,255,255', 1 - (t - 1.45) / 0.3)));
+  if (eaten) {
+    for (let i = 0; i < 6; i++) {
+      const a = i * 1.1 + 0.4;
+      canvas.drawCircle(size * 0.32 + Math.cos(a) * (t - 1.55) * 60 * k, size * 0.7 + Math.sin(a) * (t - 1.55) * 40 * k, 4 * k, fill('#C2352B'));
+    }
+  }
+  canvas.restore();
+  if (font) drawOutlinedText(canvas, s.isPlayer ? `× ${s.name}` : `× ${s.name}`, size / 2, size + 22, font, '#FF8A7A');
+  canvas.restore();
+}
+
+/** Point d'exclamation de peur. */
+function drawBang(canvas: SkCanvas, x: number, y: number, k: number) {
+  canvas.drawRRect(Skia.RRectXY(Skia.XYWHRect(x - 4 * k, y - 16 * k, 8 * k, 20 * k), 4 * k, 4 * k), fill('#FFD25A'));
+  canvas.drawCircle(x, y + 10 * k, 4 * k, fill('#FFD25A'));
+}
+
 export interface RefugeView {
   width: number;
   height: number;
@@ -629,6 +802,11 @@ export interface RefugeView {
 
 /** Ce que la caméra regarde : toi, puis l'autel pendant l'arrivée, puis ton refuge en entier. */
 function cameraFocus(state: RefugeState) {
+  if (state.finale) {
+    // Fin : la caméra va sur le vainqueur pour la couronne.
+    const w = state.finale.winner >= 0 ? state.survivors[state.finale.winner] : state.demon;
+    return { x: w.x, y: w.y - 40 };
+  }
   if (state.phase === 'arrival') return { x: CENTER.x, y: CENTER.y - 40 };
   if (state.role === 'demon') {
     // Rôle Démon : on regarde les survivants courir depuis l'autel, puis on suit le Démon.
@@ -716,6 +894,7 @@ export function drawRefuge(canvas: SkCanvas, state: RefugeState, view: RefugeVie
   const drawables: { y: number; draw: () => void }[] = [];
   for (const room of state.rooms) {
     for (const t of room.turrets) if (t.level > 0 && visible(t.x, t.y)) drawables.push({ y: t.y, draw: () => drawTurret(canvas, t, state.time) });
+    for (const a of room.allies) if (visible(a.x, a.y)) drawables.push({ y: a.y, draw: () => drawAlly(canvas, a, state.time) });
     for (const art of room.artifacts) {
       const spot = room.cells[art.cell];
       if (visible(spot.x, spot.y)) drawables.push({ y: spot.y, draw: () => drawArtifact(canvas, room, art, state.time) });
@@ -724,7 +903,14 @@ export function drawRefuge(canvas: SkCanvas, state: RefugeState, view: RefugeVie
   for (const s of state.survivors) {
     if (!s.alive || !visible(s.x, s.y)) continue;
     drawShadow(canvas, s.x, s.y, 16, 6);
-    drawables.push({ y: s.y, draw: () => drawSurvivor(canvas, s, state.time) });
+    drawables.push({
+      y: s.y,
+      draw: () => {
+        drawSurvivor(canvas, s, state.time);
+        // Éclair du tir quand il tire lui-même sur les ennemis
+        if (s.shootAnim > 0.5) canvas.drawCircle(s.x + s.dirX * 22, s.y - 34, 8 * s.shootAnim, fill('rgba(255,230,140,0.8)'));
+      },
+    });
   }
   for (const z of state.zombies) {
     if (!visible(z.x, z.y)) continue;
@@ -745,6 +931,7 @@ export function drawRefuge(canvas: SkCanvas, state: RefugeState, view: RefugeVie
   }
   drawables.sort((a, b) => a.y - b.y);
   for (const dr of drawables) dr.draw();
+  if (state.finale) drawCrown(canvas, state);
 
   // Lasers
   for (const room of state.rooms) {
@@ -823,6 +1010,14 @@ export function drawRefuge(canvas: SkCanvas, state: RefugeState, view: RefugeVie
       canvas.drawPath(cached('demonArrow', (b) => b.moveTo(22, -8).lineTo(34, 0).lineTo(22, 8).close()), fill('#FF5A5A'));
       canvas.restore();
     }
+  }
+
+  const dv = state.devours[0];
+  if (dv) drawDevour(canvas, state, dv.survivorId, dv.t, view, fonts.small);
+  if (state.finale) {
+    // Voile doré pendant le couronnement
+    const k = Math.min(1, state.finale.t / 0.6);
+    canvas.drawRect(Skia.XYWHRect(0, 0, view.width, view.height), fill(rgba('255,210,90', 0.12 * k)));
   }
 
   // Bandes noires de cinéma pendant l'arrivée du Démon

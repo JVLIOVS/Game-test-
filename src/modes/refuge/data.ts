@@ -1,4 +1,4 @@
-import type { ArtifactKind, CharacterId, DemonPower, WheelPrize } from './types';
+import type { AllyKind, ArtifactKind, CharacterId, DemonPower, WheelPrize } from './types';
 
 // Contenu du mode Refuges : personnages, roue de fin de manche, artefacts, pouvoirs du Démon.
 
@@ -29,13 +29,29 @@ export const WHEEL: { prize: WheelPrize; icon: string; color: string; rarity: 0 
   { prize: 'storm', icon: '⚡', color: '#5B8DEF', rarity: 1 },
   { prize: 'repair', icon: '🔨', color: '#7BD35A', rarity: 0 },
   { prize: 'shield', icon: '🛡️', color: '#6FB7F0', rarity: 1 },
-  { prize: 'turbo', icon: '⚙️', color: '#F2A93B', rarity: 0 },
+  { prize: 'ally', icon: '🤝', color: '#F2A93B', rarity: 1 },
   { prize: 'artifact', icon: '🔮', color: '#B05BD6', rarity: 2 },
-  { prize: 'power', icon: '💪', color: '#FF7A5A', rarity: 1 },
+  { prize: 'weapon', icon: '🏹', color: '#FF7A5A', rarity: 0 },
   { prize: 'mega', icon: '🗼', color: '#E0533D', rarity: 2 },
 ];
 /** Poids de base par rareté ; la chance déplace les poids vers les cases rares. */
 export const wheelWeight = (rarity: 0 | 1 | 2, luck: number) => (rarity === 0 ? 3 * (1 - luck * 0.6) : rarity === 1 ? 2 * (1 + luck) : 0.8 * (1 + luck * 3.5));
+
+/** Arme personnelle : dégâts et prix par niveau (le niveau 1 est offert). */
+export const WEAPON = { damage: [0, 10, 22, 46, 95], cost: [0, 0, 90, 260, 650], interval: 0.6, range: 330 };
+/** Allure du tir de chaque personnage. */
+export const WEAPON_STYLE: Record<CharacterId, 'bolt' | 'tower' | 'magic'> = { mecano: 'bolt', gardien: 'tower', veinard: 'magic' };
+
+export const ALLIES: Record<AllyKind, { icon: string; shirt: string }> = {
+  guard: { icon: '🛡️', shirt: '#6E86A8' },
+  archer: { icon: '🏹', shirt: '#4FB86A' },
+  banker: { icon: '💰', shirt: '#FFB020' },
+};
+export const ALLY_MAX = 3;
+/** Garde : la porte encaisse moins et se répare un peu. Archère : tirs rapides. Banquier : or en plus. */
+export const GUARD = { block: 0.25, repair: 0.005 };
+export const ALLY_ARCHER = { damage: 14, interval: 0.45, range: 340 };
+export const BANKER_GOLD = 3;
 
 export const BOOST_TIME = { power: 40, turbo: 60, storm: 22 };
 export const STORM = { damage: 45, interval: 0.5 };

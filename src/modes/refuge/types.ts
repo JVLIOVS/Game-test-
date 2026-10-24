@@ -3,7 +3,23 @@ import type { FlyingLog, FloatingText, Particle, Projectile, Zombie } from '../.
 // Mode Refuges : chacun s'enferme dans un refuge, le renforce avec l'or de son générateur,
 // et tient face au Démon et aux vagues de zombies. Le dernier trouvé gagne.
 
-export type PadKind = 'door' | 'gen' | 'repair';
+export type PadKind = 'door' | 'gen' | 'repair' | 'weapon';
+
+/** Compagnons gagnés à la roue : ils vivent dans ta chambre et t'aident pour toute la partie. */
+export type AllyKind = 'guard' | 'archer' | 'banker';
+
+export interface Ally {
+  kind: AllyKind;
+  cell: number;
+  x: number;
+  y: number;
+  cooldown: number;
+  /** Puissance (elle dépend de la manche où on l'a gagné). */
+  power: number;
+  /** Animation (coup, tir). */
+  anim: number;
+  aimX: number;
+}
 
 /** Personnages jouables : chacun a un talent. */
 export type CharacterId = 'mecano' | 'gardien' | 'veinard';
@@ -12,7 +28,7 @@ export type CharacterId = 'mecano' | 'gardien' | 'veinard';
 export type ArtifactKind = 'mega' | 'tesla' | 'frost' | 'heal';
 
 /** Cases de la roue de fin de manche. */
-export type WheelPrize = 'gold' | 'repair' | 'turbo' | 'storm' | 'power' | 'shield' | 'artifact' | 'mega';
+export type WheelPrize = 'gold' | 'repair' | 'ally' | 'storm' | 'weapon' | 'shield' | 'artifact' | 'mega';
 
 /** Pouvoirs du Démon : passifs, ou actifs (bouton). */
 export type DemonPower = 'toxic' | 'regen' | 'brute' | 'hide' | 'clone' | 'roar' | 'dash';
@@ -87,6 +103,10 @@ export interface Room {
   /** Cases libres où l'on construit ce qu'on veut (tourelles, artefacts). */
   cells: Cell[];
   artifacts: PlacedArtifact[];
+  /** Niveau de l'arme de l'occupant (copie, pour les prix des emplacements). */
+  weaponLevel: number;
+  /** Compagnons (garde, archère, banquier). */
+  allies: Ally[];
   /** Bonus temporaires (secondes restantes) et bouclier magique (points). */
   boosts: { power: number; turbo: number; storm: number; stormCooldown: number };
   shield: number;
@@ -123,6 +143,11 @@ export interface Survivor {
   character: CharacterId;
   /** Artefacts gagnés à la roue, en attente d'être posés. */
   inventory: ArtifactKind[];
+  /** Arme personnelle : quand tu quittes ton trône, tu tires toi-même sur ce qui approche. */
+  weapon: number;
+  weaponCooldown: number;
+  /** Animation du tir. */
+  shootAnim: number;
   /** Case vide sous les pieds (le joueur peut y construire). */
   buildCell: number | null;
   /** Robots : emplacement visé, chemin (entrée puis intérieur du refuge) et prochaine réflexion. */
@@ -173,6 +198,8 @@ export interface WheelSpin {
   /** Identifiant unique de ce tour de roue. */
   id: number;
   prize: WheelPrize;
+  /** Compagnon obtenu (case compagnon). */
+  ally: AllyKind | null;
   /** Artefact obtenu (case artefact). */
   artifact: ArtifactKind | null;
   /** Chance de la manche (0 à 1). */
@@ -223,6 +250,10 @@ export interface RefugeState {
   /** Doubles du Démon. */
   clones: Demon[];
   zaps: Zap[];
+  /** Mini-cinématiques « dévoré » (petit cadre en bas de l'écran). */
+  devours: { survivorId: number; t: number }[];
+  /** Cinématique de fin : la couronne apparaît sur le vainqueur (-1 = le Démon). */
+  finale: { winner: number; t: number } | null;
   /** Compte à rebours, course aux refuges, arrivée du Démon, siège. */
   phase: RefugePhase;
   /** Temps restant de la phase en cours. */

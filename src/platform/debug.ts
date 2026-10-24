@@ -77,7 +77,7 @@ export function applyDebugHash(state: GameState) {
 export function applyRefugeDebugHash(state: RefugeState) {
   if (Platform.OS !== 'web' || typeof window === 'undefined') return state;
   const hash = window.location.hash.toLowerCase();
-  const fast = hash.includes('vitrine') || hash.includes('roue') || hash.includes('vite');
+  const fast = hash.includes('vitrine') || hash.includes('roue') || hash.includes('vite') || hash.includes('roi') || hash.includes('devore');
   if (!fast) return state;
   // Tout le monde est déjà dans un refuge, le siège commence.
   state.survivors.forEach((s, i) => {
@@ -93,6 +93,15 @@ export function applyRefugeDebugHash(state: RefugeState) {
   state.demon.rise = 1;
   if (hash.includes('roue')) state.roundLength = 10;
   state.roundTimer = hash.includes('roue') ? 3 : 60;
+  // #refuge-roi : la partie se termine au bout de 4 s (cinématique de la couronne).
+  if (hash.includes('roi')) state.phaseTimer = 4;
+  // #refuge-devore : un survivant se fait dévorer tout de suite (petit cadre en bas).
+  if (hash.includes('devore')) {
+    state.survivors[2].alive = false;
+    state.eliminations = 1;
+    state.survivors[2].eliminatedAt = 1;
+    state.devours = [{ survivorId: 2, t: -1.5 }];
+  }
   if (hash.includes('vite')) {
     state.siegeStart = state.time - 14;
     state.powers = { clone: 1, roar: 1, dash: 1 };
@@ -114,6 +123,13 @@ export function applyRefugeDebugHash(state: RefugeState) {
     { kind: 'frost', cell: cellOf(5, 1), cooldown: 0 },
   ];
   state.survivors[0].inventory = ['heal'];
+  // Trois compagnons (garde, archère, banquier) près de la porte
+  (['guard', 'archer', 'banker'] as const).forEach((kind, i) => {
+    const [col, row] = [[1, 4], [4, 4], [3, 3]][i];
+    const cell = cellOf(col, row);
+    const c = room.cells[cell];
+    if (c) room.allies.push({ kind, cell, x: c.x, y: c.y, cooldown: 0, power: 1.5, anim: 0, aimX: 1 });
+  });
   room.door.level = 3;
   room.door.maxHp = room.door.hp = 3300;
   room.shieldMax = room.shield = 2000;

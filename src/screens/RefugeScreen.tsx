@@ -10,7 +10,7 @@ import { ROUNDS, SIEGE_TIME, refugeSouls } from '../modes/refuge/balance';
 import { ACTIVE_POWERS, ARTIFACTS, CHARACTERS, DEMON_POWERS } from '../modes/refuge/data';
 import { chooseDemonPower, graceLeft, useDemonPower } from '../modes/refuge/demon';
 import { drawRefuge } from '../modes/refuge/render';
-import { buildTurret, createRefuge, newTurretCost, placeArtifact, playerSurvivor, stepRefuge, type RefugeSetup } from '../modes/refuge/sim';
+import { FINALE_TIME, buildTurret, createRefuge, newTurretCost, placeArtifact, playerSurvivor, stepRefuge, type RefugeSetup } from '../modes/refuge/sim';
 import type { ArtifactKind, DemonPower, RefugeEvent, RefugeState } from '../modes/refuge/types';
 import { applyRefugeDebugHash } from '../platform/debug';
 import { audio } from '../platform/audio';
@@ -58,6 +58,8 @@ interface Hud {
   /** Pouvoirs actifs : "clone:2:0,roar:1:12" (niveau et recharge), pour savoir quand redessiner. */
   powersKey: string;
   paused: boolean;
+  /** Une cinématique est en cours (dévoré, couronne) : le bilan attend la fin. */
+  cinematic: boolean;
   /** Case vide sous les pieds du joueur (menu de construction), artefacts à poser, prix d'une tourelle. */
   buildCell: number | null;
   bagKey: string;
@@ -90,6 +92,7 @@ function readHud(s: RefugeState): Hud {
     grace: s.role === 'demon' && s.phase === 'siege' ? Math.ceil(graceLeft(s)) : 0,
     powersKey: ACTIVE_POWERS.filter((k) => s.powers[k]).map((k) => `${k}:${s.powers[k]}:${Math.ceil(s.powerCooldowns[k] ?? 0)}`).join(','),
     paused: s.wheel !== null || s.powerChoice !== null,
+    cinematic: s.devours.length > 0 || (s.finale !== null && s.finale.t < FINALE_TIME),
     buildCell: p && p.alive && s.phase === 'siege' ? p.buildCell : null,
     bagKey: p ? p.inventory.join(',') : '',
     turretCost: room ? newTurretCost(room) : null,
@@ -331,6 +334,12 @@ export function RefugeScreen({ setup, onFinish, onRetry, onMenu }: Props) {
         case 'demonRetreat':
           showBanner({ title: t('refuge.retreat'), tone: 'good' });
           break;
+        case 'over': {
+          const f = s.finale;
+          const w = f && f.winner >= 0 ? s.survivors[f.winner] : null;
+          showBanner({ title: w ? (w.isPlayer ? t('refuge.kingYou') : t('refuge.king', { name: w.name })) : t('refuge.kingDemon'), tone: w?.isPlayer ? 'good' : 'day' });
+          break;
+        }
         case 'demonKilled':
           haptics.success();
           showBanner({ title: t('refuge.killed'), tone: demonRole ? 'bad' : 'good' });
@@ -350,7 +359,7 @@ export function RefugeScreen({ setup, onFinish, onRetry, onMenu }: Props) {
       s.events.length = 0;
       const next = perf.time('interface', () => readHud(s));
       // L'interface n'est redessinée que quelques fois par seconde, sauf pour les changements importants.
-      const urgent = next.phase !== current.phase || next.paused !== current.paused || next.result !== current.result || next.playerAlive !== current.playerAlive || next.buildCell !== current.buildCell;
+      const urgent = next.phase !== current.phase || next.paused !== current.paused || next.result !== current.result || next.cinematic !== current.cinematic || next.playerAlive !== current.playerAlive || next.buildCell !== current.buildCell;
       if (!same(next, current) && (urgent || now - lastHud > 180)) {
         current = next;
         lastHud = now;
@@ -394,7 +403,7 @@ export function RefugeScreen({ setup, onFinish, onRetry, onMenu }: Props) {
 
   const s = stateRef.current;
   const inSiege = hud.phase === 'siege' || hud.phase === 'over';
-  const showEnd = hud.result !== null || (!hud.playerAlive && !spectating);
+  const showEnd = !hud.cinematic && (hud.result !== null || (!hud.playerAlive && !spectating));
   const bag = (hud.bagKey ? hud.bagKey.split(',') : []) as ArtifactKind[];
   const bagKinds = [...new Set(bag)];
   const building = hud.buildCell !== null;

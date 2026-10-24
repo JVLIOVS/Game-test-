@@ -3,7 +3,7 @@ import { useEffect, useMemo, useState } from 'react';
 import { Pressable, StyleSheet, Text, View } from 'react-native';
 import Animated, { FadeIn, ZoomIn, useAnimatedStyle, useSharedValue } from 'react-native-reanimated';
 import { t, type TranslationKey } from '../i18n';
-import { ARTIFACTS, WHEEL } from '../modes/refuge/data';
+import { ALLIES, ARTIFACTS, WHEEL } from '../modes/refuge/data';
 import type { WheelSpin } from '../modes/refuge/types';
 import { audio } from '../platform/audio';
 import { haptics } from '../platform/haptics';
@@ -120,11 +120,17 @@ export function RefugeWheel({ spin, onDone }: { spin: WheelSpin; onDone: () => v
 
       {stopped && (
         <Animated.View entering={ZoomIn.springify().damping(11)} style={[styles.result, { borderColor: prize.color }]}>
-          <Text style={styles.resultIcon}>{spin.artifact ? ARTIFACTS[spin.artifact].icon : prize.icon}</Text>
+          <Text style={styles.resultIcon}>{spin.artifact ? ARTIFACTS[spin.artifact].icon : spin.ally ? ALLIES[spin.ally].icon : prize.icon}</Text>
           <View style={styles.resultBody}>
-            <Text style={styles.resultName}>{spin.artifact ? t(`artifact.${spin.artifact}` as TranslationKey) : t(`wheel.${prize.prize}` as TranslationKey)}</Text>
+            <Text style={styles.resultName}>
+              {spin.artifact ? t(`artifact.${spin.artifact}` as TranslationKey) : spin.ally ? t(`ally.${spin.ally}` as TranslationKey) : t(`wheel.${prize.prize}` as TranslationKey)}
+            </Text>
             <Text style={styles.resultDesc}>
-              {spin.artifact ? `${t(`artifact.${spin.artifact}.desc` as TranslationKey)} ${t('wheel.toBag')}` : t(`wheel.${prize.prize}.desc` as TranslationKey)}
+              {spin.artifact
+                ? `${t(`artifact.${spin.artifact}.desc` as TranslationKey)} ${t('wheel.toBag')}`
+                : spin.ally
+                  ? t(`ally.${spin.ally}.desc` as TranslationKey)
+                  : t(`wheel.${prize.prize}.desc` as TranslationKey)}
             </Text>
           </View>
         </Animated.View>
