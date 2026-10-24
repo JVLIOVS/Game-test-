@@ -1,6 +1,5 @@
 import {
   AGES,
-  AI_INCOME,
   AGGRO,
   HEAL_RATIO,
   SKILLS,
@@ -21,18 +20,22 @@ import {
   SUDDEN_DEATH,
   SUDDEN_DRAIN,
   START_GOLD,
-  TURRET,
+  DIFFICULTIES,
+  FROST_SLOW,
+  TURRET_MAX,
+  TURRET_SLOTS,
+  TURRET_TYPES,
+  turretPrice,
   UNITS,
   ageCost,
   ageStat,
   baseHp,
   incomePerSec,
   overtime,
-  turretCost,
   unitCost,
 } from './data';
 import { aiThink } from './ai';
-import type { Base, Crate, EpochState, SkillId, Side, Unit, UnitKind, UpgradeId } from './types';
+import type { Base, Crate, Difficulty, EpochState, SkillId, Side, TurretType, Unit, UnitKind, UpgradeId } from './types';
 
 // Simulation du mode Époques, indépendante du dessin.
 
@@ -56,8 +59,7 @@ function makeBase(): Base {
     age: 0,
     xp: 0,
     gold: START_GOLD,
-    turret: -1,
-    turretCooldown: 0,
+    turrets: Array.from({ length: TURRET_SLOTS }, () => ({ type: null, level: 0, cooldown: 0, fire: 0 })),
     queue: [],
     queueTimer: 0,
     special: 40,
@@ -70,9 +72,19 @@ function makeBase(): Base {
   };
 }
 
-export function createEpoch(): EpochState {
+export interface EpochSetup {
+  difficulty: Difficulty;
+  /** Camps joués par l'ordinateur (en duel à deux sur le même téléphone : aucun). */
+  aiSides: Side[];
+}
+
+export function createEpoch(setup: EpochSetup = { difficulty: 'normal', aiSides: [1] }): EpochState {
   return {
     time: 0,
+    difficulty: setup.difficulty,
+    aiSides: setup.aiSides,
+    aiBoost: 1,
+    bolts: [],
     bases: [makeBase(), makeBase()],
     units: [],
     corpses: [],
@@ -139,17 +151,28 @@ export function trainUnit(state: EpochState, side: Side, kind: UnitKind) {
   return true;
 }
 
-export const canBuyTurret = (state: EpochState, side: Side) => {
+/** Prochain achat sur un emplacement de tourelle : construire (type au choix) ou améliorer. */
+export function turretOffer(state: EpochState, side: Side, slot: number, type?: TurretType) {
   const b = state.bases[side];
-  return !state.result && b.turret < b.age && b.gold >= turretCost(b.age);
-};
+  const t = b.turrets[slot];
+  if (!t) return null;
+  if (t.type === null) return type ? { cost: turretPrice(type, 1, b.age), level: 1 } : null;
+  if (t.level >= TURRET_MAX) return null;
+  return { cost: turretPrice(t.type, t.level + 1, b.age), level: t.level + 1 };
+}
 
-export function buyTurret(state: EpochState, side: Side) {
-  if (!canBuyTurret(state, side)) return false;
+/** Construire une tourelle sur un emplacement vide, ou améliorer celle qui y est. */
+export function buildTurret(state: EpochState, side: Side, slot: number, type?: TurretType) {
+  if (state.result) return false;
   const b = state.bases[side];
-  b.gold -= turretCost(b.age);
-  b.turret = b.age;
-  burst(state, baseZ(side) + dirOf(side) * 20, 0, 90, 20, ['#FFD25A', '#FFFFFF', '#FF9A5A'], 1);
+  const t = b.turrets[slot];
+  const offer = turretOffer(state, side, slot, type);
+  if (!t || !offer || b.gold < offer.cost) return false;
+  b.gold -= offer.cost;
+  if (t.type === null) t.type = type!;
+  t.level = offer.level;
+  burst(state, baseZ(side) + dirOf(side) * 20, (slot % 2 ? 1 : -1) * 90, 120, 20, ['#FFD25A', '#FFFFFF', '#FF9A5A'], 1);
+  state.events.push({ type: 'turret', side, slot, level: t.level });
   return true;
 }
 
@@ -284,6 +307,7 @@ function spawnUnit(state: EpochState, side: Side, kind: UnitKind) {
     aimX: 0,
     aimZ: 0,
     rally: 0,
+    slow: 0,
     walk: Math.random() * 10,
     attack: 0,
     flash: 0,
@@ -292,13 +316,13 @@ function spawnUnit(state: EpochState, side: Side, kind: UnitKind) {
   state.events.push({ type: 'spawn', side, kind });
 }
 
-function killUnit(state: EpochState, u: Unit) {
+function killUnit(state: EpochState, u: Unit, srcAge: number) {
   const i = state.units.indexOf(u);
   if (i < 0) return;
   state.units.splice(i, 1);
   // La troupe tombe à la renverse avant de disparaître.
   if (state.corpses.length > 30) state.corpses.shift();
-  state.corpses.push({ unit: u, t: 0 });
+  state.corpses.push({ unit: u, t: 0, style: srcAge });
   const killer: Side = u.side === 0 ? 1 : 0;
   const cost = unitCost(u.kind, u.age);
   const kb = state.bases[killer];
@@ -310,10 +334,10 @@ function killUnit(state: EpochState, u: Unit) {
   state.events.push({ type: 'kill', side: killer, age: u.age });
 }
 
-function hurtUnit(state: EpochState, u: Unit, amount: number) {
+function hurtUnit(state: EpochState, u: Unit, amount: number, srcAge: number) {
   u.hp -= amount;
   u.flash = 1;
-  if (u.hp <= 0) killUnit(state, u);
+  if (u.hp <= 0) killUnit(state, u, srcAge);
 }
 
 function hurtBase(state: EpochState, side: Side, amount: number) {
@@ -386,7 +410,7 @@ function strike(state: EpochState, u: Unit, target: Unit, mult: number) {
     if (u.age >= 2) burst(state, u.z + u.aimZ * 18, u.x + u.aimX * 18, 34, 4, ['#FFE14D', '#FFFFFF'], 0.4);
     return;
   }
-  hurtUnit(state, target, u.damage * mult);
+  hurtUnit(state, target, u.damage * mult, u.age);
   // Trace du coup, à mi-chemin entre les deux combattants
   if (state.slashes.length > 24) state.slashes.shift();
   state.slashes.push({ z: (u.z + target.z) / 2, x: (u.x + target.x) / 2, life: 0.25, side: u.side });
@@ -448,8 +472,9 @@ function updateUnits(state: EpochState, dt: number) {
         mx = Math.max(-0.4, Math.min(0.4, -u.x / (LANE_HALF * 4)));
       }
     }
+    u.slow = Math.max(0, u.slow - dt);
     if (mz || mx) {
-      const sp = u.speed * rage * dt;
+      const sp = u.speed * rage * (u.slow > 0 ? 1 - FROST_SLOW : 1) * dt;
       u.z += mz * sp;
       u.x += mx * sp;
       u.walk += dt * (rage > 1 ? 1.5 : 1);
@@ -491,7 +516,9 @@ function updateShots(state: EpochState, dt: number) {
     const step = s.speed * dt;
     if (d <= step + target.radius * 0.6) {
       state.shots.splice(i, 1);
-      hurtUnit(state, target, s.damage);
+      hurtUnit(state, target, s.damage, s.age);
+      if (s.slow) target.slow = Math.max(target.slow, s.slow);
+      if (s.splash) for (const o of [...state.units]) if (o !== target && o.side === target.side && dist2(o, target) < s.splash) hurtUnit(state, o, s.damage * 0.6, s.age);
       burst(state, target.z, target.x, 30, s.big ? 8 : 3, ['#FFFFFF', '#FFE14D', '#FF9A5A'], s.big ? 0.9 : 0.5);
       continue;
     }
@@ -506,7 +533,9 @@ function updateBases(state: EpochState, dt: number) {
   state.bases.forEach((b, i) => {
     const side = i as Side;
     // L'ordinateur gagne un peu moins d'or que toi.
-    b.gold += incomePerSec(b.age) * economyMult(b) * (side === 1 ? AI_INCOME : 1) * dt;
+    // L'ordinateur gagne plus ou moins d'or selon la difficulté (et s'adapte en Hardcore).
+    const aiMult = state.aiSides.includes(side) ? DIFFICULTIES[state.difficulty].income * state.aiBoost : 1;
+    b.gold += incomePerSec(b.age) * economyMult(b) * aiMult * dt;
     b.skills.warcry = Math.max(0, b.skills.warcry - dt);
     b.skills.heal = Math.max(0, b.skills.heal - dt);
     b.healing = Math.max(0, b.healing - dt);
@@ -526,16 +555,46 @@ function updateBases(state: EpochState, dt: number) {
         if (b.queue.length) b.queueTimer = UNITS[b.queue[0]].train;
       }
     }
-    // Tourelle de la base
-    if (b.turret >= 0) {
-      b.turretCooldown -= dt;
+    // Tourelles de la base
+    b.turrets.forEach((t, i) => {
+      t.fire = Math.max(0, t.fire - dt * 3);
+      if (!t.type) return;
+      const def = TURRET_TYPES[t.type];
+      t.cooldown -= dt;
+      if (t.cooldown > 0) return;
       const enemy = nearestEnemy(state, side, baseZ(side));
-      if (enemy && Math.abs(enemy.z - baseZ(side)) < TURRET.range && b.turretCooldown <= 0) {
-        b.turretCooldown = TURRET.rate;
-        state.events.push({ type: 'attack', side, kind: 'turret', age: b.turret });
-        state.shots.push({ side, z: baseZ(side) + dirOf(side) * 20, x: 0, h: 110, targetId: enemy.id, damage: TURRET.damage * ageStat(b.turret) * wallsMult(b), speed: SHOT_SPEED * 1.2, age: b.turret, big: true });
+      if (!enemy || Math.abs(enemy.z - baseZ(side)) > def.range) return;
+      t.cooldown = def.rate;
+      t.fire = 1;
+      const damage = def.damage * ageStat(b.age) * wallsMult(b) * (1 + 0.6 * (t.level - 1));
+      const from = { z: baseZ(side) + dirOf(side) * 20, x: (i % 2 ? 1 : -1) * (i < 2 ? 70 : 120) };
+      state.events.push({ type: 'attack', side, kind: 'turret', age: b.age });
+      if (t.type === 'lightning') {
+        // Éclair en chaîne, instantané
+        const targets = state.units.filter((u) => u.side !== side).sort((a, c) => dist2(a, enemy) - dist2(c, enemy)).slice(0, (def.chain ?? 1) + t.level - 1);
+        let prev = { ...from, h: 140 };
+        for (const u of targets) {
+          state.bolts.push({ z1: prev.z, x1: prev.x, h1: prev.h, z2: u.z, x2: u.x, h2: 30, life: 0.25 });
+          prev = { z: u.z, x: u.x, h: 30 };
+          hurtUnit(state, u, damage, b.age);
+        }
+        return;
       }
-    }
+      state.shots.push({
+        side,
+        z: from.z,
+        x: from.x,
+        h: 120,
+        targetId: enemy.id,
+        damage,
+        speed: SHOT_SPEED * (t.type === 'cannon' ? 0.8 : 1.2),
+        age: b.age,
+        big: true,
+        splash: def.splash,
+        slow: def.slow,
+        kind: t.type,
+      });
+    });
   });
 }
 
@@ -549,7 +608,7 @@ function updateStrikes(state: EpochState, dt: number) {
       drop.done = true;
       const { z, x } = drop;
       state.events.push({ type: 'impact', age: st.age });
-      for (const u of [...state.units]) if (u.side !== st.side && Math.abs(u.z - z) < 55) hurtUnit(state, u, SPECIAL.damage * ageStat(st.age));
+      for (const u of [...state.units]) if (u.side !== st.side && Math.abs(u.z - z) < 55) hurtUnit(state, u, SPECIAL.damage * ageStat(st.age), st.age);
       burst(state, z, x, 10, 16, st.age >= 4 ? ['#8EC5FF', '#FFFFFF', '#C49AF0'] : ['#FFB020', '#FF6B2B', '#FFE14D', '#5A4A3A'], 1.3);
       state.trauma = Math.min(1, state.trauma + 0.08);
     }
@@ -599,12 +658,35 @@ function updateFx(state: EpochState, dt: number) {
     if (tx.life <= 0) state.texts.splice(i, 1);
   }
   state.trauma = Math.max(0, state.trauma - dt * 1.6);
+  for (let i = state.bolts.length - 1; i >= 0; i--) {
+    state.bolts[i].life -= dt;
+    if (state.bolts[i].life <= 0) state.bolts.splice(i, 1);
+  }
 }
 
-export function stepEpoch(state: EpochState, dt: number, aiSide: Side[] = [1]) {
+/** Force d'un camp : époque, armée sur le terrain, améliorations, tourelles et base. */
+export function strength(state: EpochState, side: Side) {
+  const b = state.bases[side];
+  const army = state.units.filter((u) => u.side === side).reduce((sum, u) => sum + unitCost(u.kind, u.age) * (u.hp / u.maxHp), 0);
+  const upgrades = Object.values(b.upgrades).reduce((a, c) => a + c, 0);
+  const turrets = b.turrets.reduce((a, t) => a + (t.type ? t.level : 0), 0);
+  return (army + b.gold * 0.5) / ageCost(b.age) + b.age * 400 + upgrades * 60 + turrets * 50 + (b.hp / b.maxHp) * 150;
+}
+
+/** Hardcore : l'adversaire se renforce quand tu prends l'avantage, et lâche un peu quand il écrase. */
+function adapt(state: EpochState, dt: number) {
+  if (state.difficulty !== 'hardcore' || state.aiSides.length !== 1) return;
+  const ai = state.aiSides[0];
+  const ratio = strength(state, ai === 1 ? 0 : 1) / Math.max(1, strength(state, ai));
+  const target = Math.max(0.95, Math.min(2.2, ratio * 1.15));
+  state.aiBoost += (target - state.aiBoost) * Math.min(1, dt * 0.25);
+}
+
+export function stepEpoch(state: EpochState, dt: number) {
   state.time += dt;
   if (!state.result) {
-    for (const side of aiSide) aiThink(state, side, dt);
+    adapt(state, dt);
+    for (const side of state.aiSides) aiThink(state, side, dt);
     updateBases(state, dt);
     updateUnits(state, dt);
     updateShots(state, dt);

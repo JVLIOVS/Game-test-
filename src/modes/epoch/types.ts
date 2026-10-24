@@ -7,6 +7,19 @@ export type UnitKind = 'inf' | 'archer' | 'heavy';
 export type UpgradeId = 'attack' | 'armor' | 'economy' | 'walls';
 /** Compétences à déclencher (en plus du pouvoir de l'époque). */
 export type SkillId = 'warcry' | 'heal';
+/** Tourelles de base : flèches (rapide), canon (zone), givre (ralentit), foudre (en chaîne). */
+export type TurretType = 'arrow' | 'cannon' | 'frost' | 'lightning';
+/** Niveau de l'adversaire. Hardcore : il s'adapte à ta force pour rester très dur. */
+export type Difficulty = 'easy' | 'normal' | 'hard' | 'hardcore';
+
+export interface TurretSlot {
+  type: TurretType | null;
+  /** 1 à 3 */
+  level: number;
+  cooldown: number;
+  /** Animation de tir. */
+  fire: number;
+}
 
 export interface Unit {
   id: number;
@@ -31,6 +44,8 @@ export interface Unit {
   targetId: number | null;
   aimX: number;
   aimZ: number;
+  /** Ralentissement (tourelle de givre), en secondes restantes. */
+  slow: number;
   /** En attente au point de ralliement (temps d'attente), avant de partir en groupe. */
   rally: number | null;
   /** Animation : marche, coup porté, éclat quand on est touché. */
@@ -51,6 +66,21 @@ export interface Shot {
   age: number;
   /** Tir de tourelle (plus gros) ou de troupe. */
   big: boolean;
+  /** Tourelles : dégâts de zone (canon), ralentissement (givre), et type pour le dessin. */
+  splash?: number;
+  slow?: number;
+  kind?: TurretType;
+}
+
+/** Éclair de la tourelle de foudre, pour le dessin. */
+export interface Bolt {
+  z1: number;
+  x1: number;
+  h1: number;
+  z2: number;
+  x2: number;
+  h2: number;
+  life: number;
 }
 
 export interface Base {
@@ -59,9 +89,8 @@ export interface Base {
   age: number;
   xp: number;
   gold: number;
-  /** Tourelle de la base : époque à laquelle elle a été achetée (-1 = aucune). */
-  turret: number;
-  turretCooldown: number;
+  /** 4 emplacements de tourelles sur la base. */
+  turrets: TurretSlot[];
   /** File de recrutement. */
   queue: UnitKind[];
   queueTimer: number;
@@ -83,6 +112,8 @@ export interface Base {
 export interface Corpse {
   unit: Unit;
   t: number;
+  /** Façon d'être éliminé, selon l'époque de l'arme : assommé, tranché, enfumé, soufflé, désintégré. */
+  style: number;
 }
 
 /** Trace d'un coup au corps à corps. */
@@ -145,12 +176,19 @@ export type EpochEvent =
   | { type: 'crate'; bonus: Crate['bonus'] }
   | { type: 'skill'; side: Side; skill: SkillId }
   | { type: 'attack'; side: Side; kind: UnitKind | 'turret'; age: number }
+  | { type: 'turret'; side: Side; slot: number; level: number }
   | { type: 'impact'; age: number }
   | { type: 'upgrade'; side: Side; id: UpgradeId; level: number }
   | { type: 'over'; won: boolean };
 
 export interface EpochState {
   time: number;
+  difficulty: Difficulty;
+  /** Camps joués par l'ordinateur. */
+  aiSides: Side[];
+  bolts: Bolt[];
+  /** Hardcore : multiplicateur de l'adversaire, recalculé selon ta force. */
+  aiBoost: number;
   bases: [Base, Base];
   units: Unit[];
   corpses: Corpse[];

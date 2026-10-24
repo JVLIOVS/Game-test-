@@ -21,12 +21,15 @@ Deux camps face à face sur un même chemin, vu en perspective : ta base au prem
 - **Combat** : chaque troupe choisit l'ennemi le plus proche et fonce sur lui (en largeur comme en profondeur) ; les coups ne portent qu'au contact. Les nouvelles troupes se regroupent devant la base et partent par 3.
 - **Améliorations** 🔧 (5 niveaux, payées en or) : armes, armures, économie, remparts.
 - **Compétences** : 📯 cri de guerre (rage pour toutes tes troupes) et 💚 soins (troupes et base).
-- **Tourelle** de base (une par époque) et **pouvoir** à viser sur le chemin : pluie de météores, pluie de flèches, barrage de canons, frappe aérienne, laser orbital.
+- **Adversaire** : l'ordinateur en 🌱 Facile, ⚔️ Moyen, 🔥 Difficile (il envoie les troupes qui contrent les tiennes) ou 💀 Hardcore (en plus, son or s'ajuste à ta force pour rester dur), ou un **duel à 2** sur le même téléphone (le joueur 2 joue en haut, écran retourné). Le jeu en ligne demandera un serveur.
+- **Tourelles** 🗼 : 4 emplacements sur la base ; on choisit pour chacun baliste 🏹 (rapide), canon 💣 (zone), givre ❄️ (ralentit) ou foudre ⚡ (éclair en chaîne), puis on l'améliore jusqu'au niveau 3.
+- **Éliminations** selon l'époque de l'arme : assommé avec des étoiles, tranché en croix, nuage de poudre, soufflé par une explosion, désintégré en pixels. Chaque évolution affiche une grande carte de la nouvelle époque, et les troupes grandissent d'une époque à l'autre.
+- **Pouvoir** à viser sur le chemin : pluie de météores, pluie de flèches, barrage de canons, frappe aérienne, laser orbital.
 - **Caisses** parachutées à toucher : or, expérience, rage (troupes plus rapides et plus fortes) ou soin de la base.
 - **Caméra** : elle suit le front ; glisser le doigt ou toucher la petite carte à droite pour regarder ailleurs.
 - **Fin** : détruire la base adverse. Après 6 minutes, prolongation (tout se renforce), puis mort subite à 6 min 30.
 
-Code : `src/modes/epoch/` (simulation `sim.ts`, adversaire `ai.ts`, contenu `data.ts`, rendu en perspective `render.ts`) et `src/screens/EpochScreen.tsx`. Test entre deux ordinateurs : `npx tsx scripts/epochPlaytest.ts 5`. Web : `#epoque`, `#epoque-age3`, `#epoque-riche`, `#epoque-caisse`, `#epoque-pouvoir`.
+Code : `src/modes/epoch/` (simulation `sim.ts`, adversaire `ai.ts`, contenu `data.ts`, rendu en perspective `render.ts`) et `src/screens/EpochScreen.tsx`. Test d'un joueur simulé contre l'ordinateur : `DIFF=hardcore npx tsx scripts/epochPlaytest.ts 5`. Web : `#epoque` (choix de l'adversaire), `#epoque-jeu`, `#epoque-hardcore`, `#epoque-duel`, `#epoque-age3`, `#epoque-riche`, `#epoque-caisse`, `#epoque-pouvoir`, `#epoque-tourelles`, `#epoque-xp`.
 
 ## Mode Refuges
 

@@ -1,4 +1,4 @@
-import type { SkillId, UnitKind, UpgradeId } from './types';
+import type { Difficulty, SkillId, TurretType, UnitKind, UpgradeId } from './types';
 
 // Équilibrage et contenu du mode Époques.
 
@@ -58,15 +58,33 @@ export const unitCost = (kind: UnitKind, age: number) => Math.round(UNITS[kind].
 
 /** Base : plus solide à chaque époque. */
 export const baseHp = (age: number) => 1200 + age * 800;
-/** Tourelle de la base. */
-export const turretCost = (age: number) => Math.round(160 * ageCost(age));
-export const TURRET = { damage: 16, rate: 1.1, range: 380 };
+/** Tourelles de base : 4 emplacements, 4 types, 3 niveaux. Leur puissance suit l'époque de la base. */
+export const TURRET_SLOTS = 4;
+export const TURRET_MAX = 3;
+export const TURRET_TYPES: Record<TurretType, { icon: string; damage: number; rate: number; range: number; cost: number; splash?: number; slow?: number; chain?: number }> = {
+  arrow: { icon: '🏹', damage: 13, rate: 0.8, range: 400, cost: 110 },
+  cannon: { icon: '💣', damage: 34, rate: 2.0, range: 360, cost: 180, splash: 70 },
+  frost: { icon: '❄️', damage: 6, rate: 1.0, range: 380, cost: 150, slow: 2.2 },
+  lightning: { icon: '⚡', damage: 20, rate: 1.6, range: 420, cost: 240, chain: 3 },
+};
+export const TURRET_IDS = Object.keys(TURRET_TYPES) as TurretType[];
+/** Prix d'une tourelle (niveau 1) ou de son amélioration, à l'époque actuelle. */
+export const turretPrice = (type: TurretType, level: number, age: number) => Math.round(TURRET_TYPES[type].cost * ageCost(age) * (level === 1 ? 1 : level * 0.9));
+/** Ralentissement du givre. */
+export const FROST_SLOW = 0.45;
+
+/** Niveaux de difficulté de l'adversaire. */
+export const DIFFICULTIES: Record<Difficulty, { icon: string; income: number; think: number; warmup: number; evolveDelay: number; counters: boolean }> = {
+  easy: { icon: '🌱', income: 0.7, think: 1.2, warmup: 140, evolveDelay: 25, counters: false },
+  normal: { icon: '⚔️', income: 0.85, think: 0.8, warmup: 90, evolveDelay: 6, counters: false },
+  hard: { icon: '🔥', income: 1.05, think: 0.55, warmup: 40, evolveDelay: 0, counters: true },
+  hardcore: { icon: '💀', income: 1.15, think: 0.4, warmup: 15, evolveDelay: 0, counters: true },
+};
+export const DIFFICULTY_IDS = Object.keys(DIFFICULTIES) as Difficulty[];
 
 /** Or gagné sans rien faire, et en éliminant une troupe ennemie (part de son prix). */
 export const incomePerSec = (age: number) => 4 * Math.pow(1.7, age);
 export const KILL_GOLD = 0.8;
-/** L'ordinateur gagne un peu moins d'or que le joueur. */
-export const AI_INCOME = 0.8;
 export const KILL_XP = 1.3;
 export const START_GOLD = 120;
 export const QUEUE_MAX = 5;

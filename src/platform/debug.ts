@@ -144,7 +144,7 @@ export function applyRefugeDebugHash(state: RefugeState) {
 
 /**
  * Mode Époques, dans le navigateur : #epoque-age3 (commencer à l'époque 3, ou 1 à 5),
- * #epoque-caisse (une caisse tombe tout de suite), #epoque-riche (beaucoup d'or), #epoque-pouvoir (pouvoir prêt).
+ * #epoque-caisse (une caisse tombe tout de suite), #epoque-riche (beaucoup d'or), #epoque-pouvoir (pouvoir prêt), #epoque-tourelles (tourelles construites), #epoque-xp (évolution prête).
  */
 export function applyEpochDebugHash(state: EpochState) {
   if (Platform.OS !== 'web' || typeof window === 'undefined') return state;
@@ -160,5 +160,11 @@ export function applyEpochDebugHash(state: EpochState) {
   if (hash.includes('caisse')) state.crateTimer = 1;
   if (hash.includes('riche')) state.bases[0].gold = 5000;
   if (hash.includes('pouvoir')) state.bases[0].special = 0;
+  if (hash.includes('xp')) state.bases[0].xp = 1e6;
+  if (hash.includes('tourelles')) {
+    // Les 4 tourelles de chaque camp, à des niveaux différents
+    const types = ['arrow', 'cannon', 'frost', 'lightning'] as const;
+    for (const b of state.bases) b.turrets.forEach((t, i) => Object.assign(t, { type: types[i], level: 1 + (i % 3) }));
+  }
   return state;
 }

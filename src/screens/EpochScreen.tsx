@@ -5,10 +5,10 @@ import Animated, { FadeIn, ZoomIn } from 'react-native-reanimated';
 import { useSharedValue } from 'react-native-reanimated';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { t, type TranslationKey } from '../i18n';
-import { AGES, AGE_ICONS, EVOLVE_XP, LANE, OVERTIME_START, SKILLS, SPECIAL_ICONS, SUDDEN_DEATH, UNIT_ICONS, UNIT_KINDS, UPGRADES, UPGRADE_MAX, turretCost, unitCost, upgradeCost } from '../modes/epoch/data';
+import { AGES, AGE_ICONS, EVOLVE_XP, LANE, OVERTIME_START, SKILLS, DIFFICULTIES, SPECIAL_ICONS, SUDDEN_DEATH, TURRET_IDS, TURRET_MAX, TURRET_SLOTS, TURRET_TYPES, UNIT_ICONS, UNIT_KINDS, UPGRADES, UPGRADE_MAX, turretPrice, unitCost, upgradeCost } from '../modes/epoch/data';
 import { MINIMAP, drawEpoch, makeProjection } from '../modes/epoch/render';
-import { buyTurret, buyUpgrade, collectCrate, createEpoch, evolve, stepEpoch, trainUnit, useSkill, useSpecial } from '../modes/epoch/sim';
-import type { EpochEvent, EpochState, SkillId, UnitKind } from '../modes/epoch/types';
+import { buildTurret, buyUpgrade, collectCrate, createEpoch, evolve, stepEpoch, trainUnit, turretOffer, useSkill, useSpecial, type EpochSetup } from '../modes/epoch/sim';
+import type { EpochEvent, EpochState, Side, SkillId, TurretType, UnitKind } from '../modes/epoch/types';
 import { applyEpochDebugHash } from '../platform/debug';
 import { audio, type SfxName } from '../platform/audio';
 import { haptics } from '../platform/haptics';
@@ -44,7 +44,14 @@ interface Hud {
   hp: number;
   enemyHp: number;
   queue: string;
-  turret: number;
+  /** Tourelles : "type:niveau" par emplacement ("-" si vide). */
+  turrets: string;
+  /** Duel : ce que voit le joueur 2 (en haut). */
+  gold2: number;
+  xp2: number;
+  queue2: number;
+  special2: number;
+  warcry2: number;
   special: number;
   warcry: number;
   heal: number;
@@ -67,7 +74,12 @@ function readHud(s: EpochState): Hud {
     hp: Math.round((me.hp / me.maxHp) * 50) / 50,
     enemyHp: Math.round((foe.hp / foe.maxHp) * 50) / 50,
     queue: me.queue.join(','),
-    turret: me.turret,
+    turrets: me.turrets.map((t) => (t.type ? `${t.type}:${t.level}` : '-')).join(','),
+    gold2: Math.floor(foe.gold),
+    xp2: foe.age >= AGES - 1 ? 0 : Math.round(Math.min(1, foe.xp / EVOLVE_XP[foe.age]) * 40) / 40,
+    queue2: foe.queue.length,
+    special2: Math.ceil(foe.special),
+    warcry2: Math.ceil(foe.skills.warcry),
     special: Math.ceil(me.special),
     warcry: Math.ceil(me.skills.warcry),
     heal: Math.ceil(me.skills.heal),
@@ -135,6 +147,9 @@ function epochSound(ev: EpochEvent) {
     case 'upgrade':
       if (ev.side === 0) audio.sfx('buy');
       break;
+    case 'turret':
+      audio.sfx(ev.level > 1 ? 'levelup' : 'build', ev.side === 0 ? 1 : 0.5);
+      break;
     case 'over':
       audio.sfx(ev.won ? 'win' : 'lose');
       break;
@@ -142,24 +157,31 @@ function epochSound(ev: EpochEvent) {
 }
 
 interface Props {
+  setup: EpochSetup;
   onFinish: (souls: number) => number;
   onRetry: () => void;
   onMenu: () => void;
 }
 
-export function EpochScreen({ onFinish, onRetry, onMenu }: Props) {
+export function EpochScreen({ setup, onFinish, onRetry, onMenu }: Props) {
+  const duel = setup.aiSides.length === 0;
   const { width, height } = useWindowDimensions();
   const insets = useSafeAreaInsets();
   const fontBig = useFont(FONT_FILE, 20);
   const fontSmall = useFont(FONT_FILE, 14);
   const picture = useSharedValue<SkPicture>(emptyPicture());
   const stateRef = useRef<EpochState>(null as unknown as EpochState);
-  if (!stateRef.current) stateRef.current = applyEpochDebugHash(createEpoch());
+  if (!stateRef.current) stateRef.current = applyEpochDebugHash(createEpoch(setup));
   const cam = useRef({ z: CAM_MIN, manualUntil: 0 }).current;
   const touch = useRef({ x: 0, y: 0, camZ: 0, dragging: false, minimap: false }).current;
   const [hud, setHud] = useState<Hud>(() => readHud(stateRef.current));
   const [aiming, setAiming] = useState(false);
   const [shop, setShop] = useState(false);
+  const [towers, setTowers] = useState(false);
+  const [slotPick, setSlotPick] = useState<number | null>(null);
+  /** Grande carte plein écran quand tu changes d'époque. */
+  const [ageCard, setAgeCard] = useState<{ age: number; id: number } | null>(null);
+  const ageCardTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
   const aimingRef = useRef(false);
   aimingRef.current = aiming;
   const [banner, setBanner] = useState<BannerData | null>(null);
@@ -189,6 +211,12 @@ export function EpochScreen({ onFinish, onRetry, onMenu }: Props) {
   );
   useEffect(() => () => {
     if (bannerTimer.current) clearTimeout(bannerTimer.current);
+    if (ageCardTimer.current) clearTimeout(ageCardTimer.current);
+  }, []);
+  const showAgeCard = useCallback((age: number) => {
+    if (ageCardTimer.current) clearTimeout(ageCardTimer.current);
+    setAgeCard({ age, id: Date.now() });
+    ageCardTimer.current = setTimeout(() => setAgeCard(null), 2600);
   }, []);
 
   useEffect(() => {
@@ -210,7 +238,10 @@ export function EpochScreen({ onFinish, onRetry, onMenu }: Props) {
         case 'evolve':
           if (ev.side === 0) {
             haptics.success();
-            showBanner({ title: `${AGE_ICONS[ev.age]} ${t(`age.${ev.age}` as TranslationKey)} !`, sub: t('epoch.evolved'), tone: 'good' });
+            showAgeCard(ev.age);
+          } else if (duel) {
+            haptics.success();
+            showBanner({ title: `${AGE_ICONS[ev.age]} ${t('epoch.p2')} → ${t(`age.${ev.age}` as TranslationKey)}`, tone: 'bad' });
           } else {
             haptics.medium();
             showBanner({ title: t('epoch.enemyEvolved'), sub: `${AGE_ICONS[ev.age]} ${t(`age.${ev.age}` as TranslationKey)}`, tone: 'bad' });
@@ -281,14 +312,16 @@ export function EpochScreen({ onFinish, onRetry, onMenu }: Props) {
     };
     raf = requestAnimationFrame(frame);
     return () => cancelAnimationFrame(raf);
-  }, [width, height, fontBig, fontSmall, picture, showBanner, cam]);
+  }, [width, height, fontBig, fontSmall, picture, showBanner, showAgeCard, duel, cam]);
 
   // Fin de partie : âmes enregistrées une seule fois.
   useEffect(() => {
     if (!hud.result || souls !== null) return;
     const r = hud.result;
-    setSouls(onFinish(r.won ? 40 + r.age * 10 : 5 + r.age * 8 + Math.floor(r.kills / 8)));
-  }, [hud.result, souls, onFinish]);
+    // Plus l'adversaire est fort, plus la victoire rapporte d'âmes.
+    const mult = duel ? 0.5 : { easy: 0.6, normal: 1, hard: 1.5, hardcore: 2.2 }[setup.difficulty];
+    setSouls(onFinish(Math.round((r.won ? 40 + r.age * 10 : 5 + r.age * 8 + Math.floor(r.kills / 8)) * mult)));
+  }, [hud.result, souls, onFinish, duel, setup.difficulty]);
 
   // Musique orchestrale pendant la partie.
   useEffect(() => {
@@ -356,8 +389,65 @@ export function EpochScreen({ onFinish, onRetry, onMenu }: Props) {
   };
   const queue = hud.queue ? (hud.queue.split(',') as UnitKind[]) : [];
   const canEvolveNow = hud.age < AGES - 1 && hud.xp >= 1;
-  const turretPrice = turretCost(hud.age);
-  const turretDone = hud.turret >= hud.age;
+  const slots = hud.turrets.split(',').map((x) => {
+    if (x === '-') return null;
+    const [type, level] = x.split(':');
+    return { type: type as TurretType, level: Number(level) };
+  });
+  const tapSlot = (i: number) => {
+    const slot = slots[i];
+    if (!slot) {
+      audio.sfx('tap');
+      setSlotPick((v) => (v === i ? null : i));
+      return;
+    }
+    if (buildTurret(stateRef.current, 0, i)) haptics.success();
+    else {
+      haptics.error();
+      audio.sfx('error');
+    }
+  };
+  const pickTurret = (type: TurretType) => {
+    if (slotPick === null) return;
+    if (buildTurret(stateRef.current, 0, slotPick, type)) {
+      haptics.success();
+      setSlotPick(null);
+    } else {
+      haptics.error();
+      audio.sfx('error');
+    }
+  };
+  // Duel : le joueur 2 joue en haut de l'écran, tourné vers lui.
+  const p2 = (fn: (st: EpochState) => boolean) => {
+    if (fn(stateRef.current)) {
+      haptics.light();
+      audio.sfx('tap');
+    } else {
+      haptics.error();
+      audio.sfx('error');
+    }
+  };
+  const p2Turret = (st: EpochState) => {
+    const b = st.bases[1];
+    const empty = b.turrets.findIndex((x) => x.type === null);
+    if (empty >= 0) return buildTurret(st, 1, empty, TURRET_IDS[empty]);
+    const low = b.turrets.reduce((best, x, i) => (x.level < b.turrets[best].level ? i : best), 0);
+    return buildTurret(st, 1, low);
+  };
+  const p2Special = (st: EpochState) => {
+    // Le pouvoir du joueur 2 tombe sur le groupe ennemi le plus avancé vers sa base.
+    const foes = st.units.filter((u) => u.side === 0);
+    const z = foes.length ? Math.max(...foes.map((u) => u.z)) - 60 : LANE * 0.6;
+    return useSpecial(st, 1, z);
+  };
+  const foeAge = hud.enemyAge;
+  const p2TurretOffer = (() => {
+    const b = s.bases[1];
+    const empty = b.turrets.findIndex((x) => x.type === null);
+    if (empty >= 0) return turretOffer(s, 1, empty, TURRET_IDS[empty]);
+    const low = b.turrets.reduce((best, x, i) => (x.level < b.turrets[best].level ? i : best), 0);
+    return turretOffer(s, 1, low);
+  })();
   const levels = hud.upgrades.split(',').map(Number);
 
   return (
@@ -376,7 +466,53 @@ export function EpochScreen({ onFinish, onRetry, onMenu }: Props) {
       </View>
 
       {/* Haut : or, époque et expérience, temps ; puis les deux bases */}
-      <View pointerEvents="box-none" style={[styles.top, { top: insets.top + 6, left: insets.left + 10, right: insets.right + 10 }]}>
+      {duel && (
+        <View pointerEvents="box-none" style={[styles.p2, { top: insets.top + 4, left: insets.left + 8, right: insets.right + 8 }]}>
+          <View style={styles.row}>
+            <View style={styles.pill}>
+              <Text style={styles.gold}>🪙 {hud.gold2}</Text>
+            </View>
+            <View style={[styles.pill, styles.agePill]}>
+              <Text style={styles.ageText}>
+                {t('epoch.p2')} · {AGE_ICONS[foeAge]} {t(`age.${foeAge}` as TranslationKey)}
+              </Text>
+              <View style={styles.xpBack}>
+                <View style={[styles.xpFill, { width: `${Math.round(hud.xp2 * 100)}%`, backgroundColor: '#FF8A7A' }]} />
+              </View>
+            </View>
+            {foeAge < AGES - 1 && hud.xp2 >= 1 && (
+              <Pressable onPress={() => p2((st) => evolve(st, 1))} accessibilityRole="button" style={({ pressed }) => [styles.p2Evolve, pressed && styles.pressed]}>
+                <Text style={styles.smallText}>⏩ {AGE_ICONS[foeAge + 1]}</Text>
+              </Pressable>
+            )}
+          </View>
+          <View style={styles.buttons}>
+            {UNIT_KINDS.map((k) => {
+              const cost = unitCost(k, foeAge);
+              return (
+                <Pressable key={k} onPress={() => p2((st) => trainUnit(st, 1, k))} accessibilityRole="button" style={({ pressed }) => [styles.small, styles[k], (hud.gold2 < cost || hud.queue2 >= 5) && styles.off, pressed && styles.pressed]}>
+                  <Text style={styles.smallIcon}>{UNIT_ICONS[foeAge][k]}</Text>
+                  <Text style={styles.smallText}>{cost}</Text>
+                </Pressable>
+              );
+            })}
+            <Pressable onPress={() => p2(p2Turret)} accessibilityRole="button" style={({ pressed }) => [styles.small, styles.turret, (!p2TurretOffer || hud.gold2 < p2TurretOffer.cost) && styles.off, pressed && styles.pressed]}>
+              <Text style={styles.smallIcon}>🗼</Text>
+              <Text style={styles.smallText}>{p2TurretOffer ? p2TurretOffer.cost : 'MAX'}</Text>
+            </Pressable>
+            <Pressable onPress={() => p2((st) => useSkill(st, 1, 'warcry'))} accessibilityRole="button" style={({ pressed }) => [styles.small, styles.skill, hud.warcry2 > 0 && styles.off, pressed && styles.pressed]}>
+              <Text style={styles.smallIcon}>{SKILLS.warcry.icon}</Text>
+              <Text style={styles.smallText}>{hud.warcry2 > 0 ? `${hud.warcry2}s` : '!'}</Text>
+            </Pressable>
+            <Pressable onPress={() => p2(p2Special)} accessibilityRole="button" style={({ pressed }) => [styles.small, styles.special, hud.special2 > 0 && styles.off, pressed && styles.pressed]}>
+              <Text style={styles.smallIcon}>{SPECIAL_ICONS[foeAge]}</Text>
+              <Text style={styles.smallText}>{hud.special2 > 0 ? `${hud.special2}s` : '!'}</Text>
+            </Pressable>
+          </View>
+        </View>
+      )}
+
+      <View pointerEvents="box-none" style={[styles.top, { top: insets.top + (duel ? 132 : 6), left: insets.left + 10, right: insets.right + 10 }]}>
         <View pointerEvents="none" style={styles.row}>
           <View style={styles.pill}>
             <Text style={styles.gold}>🪙 {hud.gold}</Text>
@@ -390,7 +526,9 @@ export function EpochScreen({ onFinish, onRetry, onMenu }: Props) {
             </View>
           </View>
           <View style={styles.pill}>
-            <Text style={styles.time}>{clock(hud.time)}</Text>
+            <Text style={styles.time}>
+              {duel ? '👥' : DIFFICULTIES[setup.difficulty].icon} {clock(hud.time)}
+            </Text>
           </View>
         </View>
         <View pointerEvents="none" style={styles.baseRow}>
@@ -466,6 +604,51 @@ export function EpochScreen({ onFinish, onRetry, onMenu }: Props) {
             })}
           </Animated.View>
         )}
+        {towers && slotPick !== null && (
+          <Animated.View entering={FadeIn.duration(150)} style={styles.shop}>
+            {TURRET_IDS.map((type) => {
+              const cost = turretPrice(type, 1, hud.age);
+              return (
+                <Pressable key={type} onPress={() => pickTurret(type)} accessibilityRole="button" style={({ pressed }) => [styles.upCard, hud.gold < cost && styles.off, pressed && styles.pressed]}>
+                  <Text style={styles.upIcon}>{TURRET_TYPES[type].icon}</Text>
+                  <Text style={styles.upName}>{t(`turret.${type}` as TranslationKey)}</Text>
+                  <Text style={styles.upDesc}>{t(`turret.${type}.desc` as TranslationKey)}</Text>
+                  <Text style={styles.btnCost}>🪙 {cost}</Text>
+                </Pressable>
+              );
+            })}
+          </Animated.View>
+        )}
+        {towers && (
+          <Animated.View entering={FadeIn.duration(150)} style={styles.shop}>
+            {Array.from({ length: TURRET_SLOTS }, (_, i) => {
+              const slot = slots[i];
+              const max = !!slot && slot.level >= TURRET_MAX;
+              const cost = slot && !max ? turretPrice(slot.type, slot.level + 1, hud.age) : 0;
+              return (
+                <Pressable
+                  key={i}
+                  onPress={() => tapSlot(i)}
+                  accessibilityRole="button"
+                  style={({ pressed }) => [styles.upCard, slotPick === i && styles.slotOn, slot && !max && hud.gold < cost && styles.off, pressed && styles.pressed]}
+                >
+                  <Text style={styles.upIcon}>{slot ? TURRET_TYPES[slot.type].icon : '➕'}</Text>
+                  <Text style={styles.upName}>{slot ? t(`turret.${slot.type}` as TranslationKey) : t('epoch.slot', { n: i + 1 })}</Text>
+                  {slot ? (
+                    <View style={styles.pips}>
+                      {Array.from({ length: TURRET_MAX }, (_, n) => (
+                        <View key={n} style={[styles.pip, n < slot.level && styles.pipOn]} />
+                      ))}
+                    </View>
+                  ) : (
+                    <Text style={styles.upDesc}>{t('epoch.slotEmpty')}</Text>
+                  )}
+                  <Text style={styles.btnCost}>{!slot ? '…' : max ? 'MAX' : `⬆️ ${cost}`}</Text>
+                </Pressable>
+              );
+            })}
+          </Animated.View>
+        )}
         <View pointerEvents="none" style={styles.queue}>
           {queue.map((k, i) => (
             <Text key={i} style={[styles.queueIcon, i === 0 && styles.queueFirst]}>
@@ -491,25 +674,22 @@ export function EpochScreen({ onFinish, onRetry, onMenu }: Props) {
         <View pointerEvents="box-none" style={styles.buttons}>
           <Pressable
             onPress={() => {
-              if (buyTurret(stateRef.current, 0)) {
-                haptics.success();
-                audio.sfx('build');
-              }
-              else {
-                    haptics.error();
-                    audio.sfx('error');
-                  }
+              audio.sfx('tap');
+              setTowers((v) => !v);
+              setShop(false);
+              setSlotPick(null);
             }}
             accessibilityRole="button"
-            style={({ pressed }) => [styles.small, styles.turret, (turretDone || hud.gold < turretPrice) && styles.off, pressed && styles.pressed]}
+            style={({ pressed }) => [styles.small, styles.turret, towers && styles.aimingBtn, pressed && styles.pressed]}
           >
             <Text style={styles.smallIcon}>🗼</Text>
-            <Text style={styles.smallText}>{turretDone ? '✓' : turretPrice}</Text>
+            <Text style={styles.smallText}>{t('epoch.turrets')}</Text>
           </Pressable>
           <Pressable
             onPress={() => {
               audio.sfx('tap');
               setShop((v) => !v);
+              setTowers(false);
             }} accessibilityRole="button" style={({ pressed }) => [styles.small, styles.shopBtn, shop && styles.aimingBtn, pressed && styles.pressed]}>
             <Text style={styles.smallIcon}>🔧</Text>
             <Text style={styles.smallText}>{t('epoch.upgrades')}</Text>
@@ -555,10 +735,33 @@ export function EpochScreen({ onFinish, onRetry, onMenu }: Props) {
         </View>
       </View>
 
+      {ageCard && !hud.result && (
+        <Animated.View key={ageCard.id} pointerEvents="none" entering={FadeIn.duration(200)} style={styles.ageBackdrop}>
+          <Animated.View entering={ZoomIn.springify().damping(8)} style={styles.ageCard}>
+            <Text style={styles.ageStep}>{t('epoch.ageStep', { n: ageCard.age + 1, max: AGES })}</Text>
+            <Text style={styles.ageBig}>{AGE_ICONS[ageCard.age]}</Text>
+            <Text style={styles.ageName}>{t(`age.${ageCard.age}` as TranslationKey)}</Text>
+            <View style={styles.ageUnits}>
+              {UNIT_KINDS.map((k, i) => (
+                <Animated.Text key={k} entering={ZoomIn.delay(300 + i * 150).springify()} style={styles.ageUnit}>
+                  {UNIT_ICONS[ageCard.age][k]}
+                </Animated.Text>
+              ))}
+              <Animated.Text entering={ZoomIn.delay(750).springify()} style={styles.ageUnit}>
+                {SPECIAL_ICONS[ageCard.age]}
+              </Animated.Text>
+            </View>
+            <Text style={styles.ageSub}>{t('epoch.evolved')}</Text>
+          </Animated.View>
+        </Animated.View>
+      )}
+
       {hud.result && (
         <Animated.View entering={FadeIn.duration(300)} style={styles.backdrop}>
           <Animated.View entering={ZoomIn.delay(400).springify().damping(13)} style={styles.card}>
-            <Text style={[styles.title, hud.result.won && styles.titleWin]}>{hud.result.won ? t('epoch.win') : t('epoch.lose')}</Text>
+            <Text style={[styles.title, hud.result.won && styles.titleWin]}>
+              {duel ? (hud.result.won ? t('epoch.p1wins') : t('epoch.p2wins')) : hud.result.won ? t('epoch.win') : t('epoch.lose')}
+            </Text>
             <Text style={styles.stat}>
               {AGE_ICONS[hud.result.age]} {t(`age.${hud.result.age}` as TranslationKey)}
             </Text>
@@ -623,6 +826,17 @@ const styles = StyleSheet.create({
   archer: { backgroundColor: '#A8E08A' },
   heavy: { backgroundColor: '#FFC27A' },
   turret: { backgroundColor: '#C9C2D8' },
+  slotOn: { borderColor: '#FFD25A', backgroundColor: '#FFF4C8' },
+  p2: { position: 'absolute', gap: 6, transform: [{ rotate: '180deg' }] },
+  p2Evolve: { backgroundColor: '#7BD35A', borderRadius: 14, borderWidth: 3, borderColor: '#2B2238', borderBottomWidth: 6, paddingHorizontal: 10, paddingVertical: 6 },
+  ageBackdrop: { position: 'absolute', top: 0, left: 0, right: 0, bottom: 0, alignItems: 'center', justifyContent: 'center', backgroundColor: 'rgba(12,10,20,0.45)' },
+  ageCard: { width: '84%', maxWidth: 340, backgroundColor: '#3A2E52', borderRadius: 30, borderWidth: 5, borderColor: '#FFD25A', paddingVertical: 22, paddingHorizontal: 16, alignItems: 'center', gap: 6 },
+  ageStep: { color: '#FFD25A', fontSize: 16, fontFamily: FONT.bold, letterSpacing: 2 },
+  ageBig: { fontSize: 86 },
+  ageName: { color: '#FFFFFF', fontSize: 30, fontFamily: FONT.bold, textAlign: 'center' },
+  ageUnits: { flexDirection: 'row', gap: 12, marginVertical: 6 },
+  ageUnit: { fontSize: 36 },
+  ageSub: { color: '#D8D0E8', fontSize: 15, fontFamily: FONT.semi, textAlign: 'center' },
   special: { backgroundColor: '#FF8A7A' },
   aimingBtn: { backgroundColor: '#FFD25A' },
   off: { opacity: 0.5 },

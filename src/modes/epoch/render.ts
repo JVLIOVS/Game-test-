@@ -2,7 +2,7 @@ import { PaintStyle, Skia, StrokeCap, type SkCanvas, type SkFont, type SkPaint, 
 import { drawOutlinedText } from '../../render/fx';
 import { PALETTE as C, fill, stroke } from '../../render/palette';
 import { AGE_THEMES, LANE, LANE_HALF } from './data';
-import type { Base, Crate, EpochState, Side, Unit } from './types';
+import type { Base, Bolt, Corpse, Crate, EpochState, Shot, Side, TurretSlot, Unit } from './types';
 
 // Mode Époques, dessiné en perspective : le chemin file vers l'horizon, ta base au premier plan,
 // celle de l'adversaire au loin. Chaque moitié du chemin prend les couleurs de l'époque de son camp.
@@ -324,17 +324,14 @@ function drawBase(canvas: SkCanvas, b: Base, side: Side, time: number) {
   // Drapeau du camp
   canvas.drawRect(Skia.XYWHRect(-118, -230, 6, 110), fill(C.outline));
   canvas.drawPath(cached('flag', (bb) => bb.moveTo(-112, -230).lineTo(-60, -218).lineTo(-112, -204).close()), fill(team.main));
-  // Tourelle
-  if (b.turret >= 0) {
+  // Tourelles sur les 4 emplacements (mêmes positions que dans la simulation)
+  b.turrets.forEach((t, i) => {
+    if (!t.type) return;
     canvas.save();
-    canvas.translate(40, b.age === 4 ? -170 : -150);
-    canvas.drawRRect(rr(-22, -10, 44, 22, 6), ol());
-    canvas.drawRRect(rr(-19, -7, 38, 16, 5), fill(team.dark));
-    canvas.drawCircle(0, -10, 14, ol());
-    canvas.drawCircle(0, -10, 11, fill(['#8A6A4A', '#8E979E', '#4A4F5E', '#5E6670', '#E8ECF8'][b.turret]));
-    canvas.drawRRect(rr(-4, side === 0 ? -40 : -10, 8, 30, 3), ol());
+    canvas.translate(TURRET_SPOT[i], i < 2 ? (b.age === 4 ? -175 : -158) : -118);
+    drawTurret(canvas, t, b.age, team, side, time);
     canvas.restore();
-  }
+  });
   // Tourbillon du temps pendant l'évolution
   if (b.evolving > 0) {
     const k = b.evolving / 1.6;
@@ -342,6 +339,55 @@ function drawBase(canvas: SkCanvas, b: Base, side: Side, time: number) {
       const rad = 60 + r * 50 + (1 - k) * 120;
       canvas.drawOval(Skia.XYWHRect(-rad, -80 - rad * 0.45, rad * 2, rad * 0.9), stroke(rgba(r % 2 ? '142,197,255' : '230,200,255', k), 6));
     }
+  }
+}
+
+/** Position x des 4 emplacements de tourelle sur la base. */
+const TURRET_SPOT = [-70, 70, -120, 120];
+const TURRET_STONE = ['#8A6A4A', '#8E979E', '#7A4A2A', '#5E6670', '#C8D0E8'];
+
+/** Une tourelle : socle selon l'époque, tête selon le type, un étage de plus par niveau. */
+function drawTurret(canvas: SkCanvas, t: TurretSlot, age: number, team: (typeof TEAM)[number], side: Side, time: number) {
+  const tall = 10 + t.level * 9;
+  canvas.drawRRect(rr(-20, -tall, 40, tall + 8, 6), ol());
+  canvas.drawRRect(rr(-17, -tall + 3, 34, tall + 2, 4), fill(TURRET_STONE[age]));
+  for (let l = 1; l < t.level; l++) canvas.drawRect(Skia.XYWHRect(-17, -tall + 3 + l * 9, 34, 3), fill(team.dark));
+  // Étoiles de niveau
+  for (let l = 0; l < t.level; l++) canvas.drawCircle(-10 + l * 10, 2, 3, fill('#FFD25A'));
+  canvas.translate(0, -tall);
+  const kick = t.fire * 6;
+  const aim = side === 0 ? -1 : 1;
+  if (t.type === 'arrow') {
+    // Baliste : arc large et carreau
+    canvas.drawRRect(rr(-6, -14, 12, 16, 3), fill(team.main));
+    canvas.drawPath(cached('ballista', (p) => p.moveTo(-26, -4).quadTo(0, -26, 26, -4)), line(C.outline, 6));
+    canvas.drawPath(cached('ballista', (p) => p.moveTo(-26, -4).quadTo(0, -26, 26, -4)), line('#A8703A', 3.5));
+    canvas.drawLine(0, -10 + kick, 0, -10 + kick + aim * 22, line('#E8ECF4', 2.5));
+  } else if (t.type === 'cannon') {
+    // Gros canon qui recule à chaque tir
+    canvas.drawCircle(0, -10, 14, ol());
+    canvas.drawCircle(0, -10, 11, fill('#3A3F4C'));
+    canvas.drawRRect(rr(-7, aim < 0 ? -40 + kick : -10 - kick, 14, 30, 5), ol());
+    canvas.drawRRect(rr(-5, aim < 0 ? -38 + kick : -8 - kick, 10, 26, 4), fill('#4A4F5E'));
+    if (t.fire > 0.6) canvas.drawCircle(0, aim < 0 ? -44 : 24, 10 * t.fire, fill('#FFB84D'));
+  } else if (t.type === 'frost') {
+    // Cristal de glace qui flotte
+    const bob = Math.sin(time * 3) * 3;
+    canvas.drawCircle(0, -18 + bob, 18 + t.fire * 8, fill(rgba('160,230,255', 0.3)));
+    canvas.drawPath(cached('crystal', (p) => p.moveTo(0, -42).lineTo(11, -18).lineTo(0, 0).lineTo(-11, -18).close()), ol());
+    canvas.save();
+    canvas.translate(0, bob);
+    canvas.scale(0.8, 0.85);
+    canvas.drawPath(cached('crystal', (p) => p.moveTo(0, -42).lineTo(11, -18).lineTo(0, 0).lineTo(-11, -18).close()), fill('#BFF0FF'));
+    canvas.restore();
+  } else {
+    // Bobine électrique et sa boule
+    for (let k = 0; k < 3; k++) canvas.drawOval(Skia.XYWHRect(-12 + k * 2, -8 - k * 9, 24 - k * 4, 8), fill(k % 2 ? '#C8962A' : '#E8B84A'));
+    canvas.drawRect(Skia.XYWHRect(-2, -36, 4, 12), fill('#5A626E'));
+    canvas.drawCircle(0, -40, 9, ol());
+    canvas.drawCircle(0, -40, 7, fill(t.fire > 0.3 ? '#FFFFFF' : '#B8E8FF'));
+    const flick = Math.sin(time * 40);
+    if (flick > 0.3 || t.fire > 0) canvas.drawLine(-4, -46, -12 + flick * 3, -56, line('#E0FAFF', 2));
   }
 }
 
@@ -686,6 +732,151 @@ function drawCrate(canvas: SkCanvas, c: Crate, s: number, time: number) {
   canvas.restore();
 }
 
+function drawTurretShot(canvas: SkCanvas, s: Shot, k: number, time: number) {
+  if (s.kind === 'arrow') {
+    // Carreau de baliste avec traînée
+    canvas.drawLine(0, -18 * k, 0, 10 * k, line(rgba('255,255,255', 0.4), 5 * k));
+    canvas.drawLine(0, -14 * k, 0, 8 * k, line('#5A3A22', Math.max(1.5, 2.5 * k)));
+    canvas.drawCircle(0, 9 * k, 2.5 * k, fill('#E8ECF4'));
+  } else if (s.kind === 'cannon') {
+    canvas.drawCircle(0, 0, 12 * k, fill(rgba('255,180,80', 0.35)));
+    canvas.drawCircle(0, 0, 8 * k, ol());
+    canvas.drawCircle(0, 0, 6.5 * k, fill('#2B2238'));
+    canvas.drawCircle(-2 * k, -2 * k, 2 * k, fill('rgba(255,255,255,0.5)'));
+  } else {
+    // Éclat de givre qui tourne
+    canvas.save();
+    canvas.rotate(time * 600, 0, 0);
+    canvas.drawCircle(0, 0, 12 * k, fill(rgba('160,230,255', 0.4)));
+    for (let a = 0; a < 3; a++) {
+      canvas.rotate(60, 0, 0);
+      canvas.drawLine(0, -9 * k, 0, 9 * k, line('#E8FAFF', Math.max(1.5, 3 * k)));
+    }
+    canvas.restore();
+  }
+}
+
+/** Éclair brisé entre deux points. */
+function drawBolt(canvas: SkCanvas, proj: Projection, bo: Bolt) {
+  const a = proj.at(bo.z1, bo.x1, bo.h1);
+  const b = proj.at(bo.z2, bo.x2, bo.h2);
+  if (!a || !b) return;
+  const alpha = Math.min(1, bo.life / 0.15);
+  const pb = Skia.PathBuilder.Make();
+  pb.moveTo(a.x, a.y);
+  const n = 6;
+  for (let i = 1; i < n; i++) {
+    const t = i / n;
+    pb.lineTo(a.x + (b.x - a.x) * t + (Math.random() - 0.5) * 22, a.y + (b.y - a.y) * t + (Math.random() - 0.5) * 22);
+  }
+  pb.lineTo(b.x, b.y);
+  const path = pb.build();
+  canvas.drawPath(path, line(rgba('120,200,255', alpha * 0.5), 9));
+  canvas.drawPath(path, line(rgba('255,255,255', alpha), 3));
+  canvas.drawCircle(b.x, b.y, 14 * alpha, fill(rgba('200,240,255', alpha * 0.6)));
+}
+
+/**
+ * Élimination stylisée selon l'époque de l'arme :
+ * 0 assommé (il tourne sur lui-même avec des étoiles), 1 tranché (une croix blanche, puis il tombe),
+ * 2 enfumé (nuage de poudre), 3 soufflé (projeté en l'air dans une explosion), 4 désintégré (en pixels).
+ */
+function drawCorpse(canvas: SkCanvas, cp: Corpse, time: number) {
+  const t = cp.t;
+  const u = { ...cp.unit, attack: 0 };
+  const dir = cp.unit.side === 0 ? -1 : 1;
+  const alpha = t < 0.8 ? 1 : Math.max(0, 1 - (t - 0.8) / 0.6);
+  const team = TEAM[cp.unit.side];
+  const style = cp.style;
+  if (style === 3) {
+    // Explosion : boule de feu, il s'envole en tournoyant
+    const up = Math.sin(Math.min(1, t / 0.9) * Math.PI) * 90;
+    if (t < 0.5) {
+      const r = 20 + t * 140;
+      canvas.drawCircle(0, -30, r, fill(rgba('255,140,40', 0.7 - t)));
+      canvas.drawCircle(0, -30, r * 0.6, fill(rgba('255,230,120', 0.9 - t * 1.6)));
+    }
+    canvas.saveLayer(layerAlphaPaint(alpha));
+    canvas.translate(dir * t * 60, -up);
+    canvas.rotate(dir * t * 540, 0, -40);
+    drawUnit(canvas, { ...u, flash: Math.max(0, 1 - t * 3) }, false, false, time);
+    canvas.restore();
+    return;
+  }
+  if (style === 4) {
+    // Désintégration : il se dissout en carrés lumineux qui montent
+    const k = Math.min(1, t / 0.5);
+    if (k < 1) {
+      canvas.saveLayer(layerAlphaPaint(1 - k));
+      drawUnit(canvas, { ...u, flash: 1 }, false, false, time);
+      canvas.restore();
+    }
+    for (let i = 0; i < 14; i++) {
+      const sx = ((i * 37) % 30) - 15;
+      const sy = -((i * 53) % 70) - 5;
+      const rise = t * (40 + (i % 5) * 18);
+      const sz = 6 * (1 - Math.min(1, t / 1.3));
+      if (sz <= 0) continue;
+      canvas.drawRect(Skia.XYWHRect(sx + Math.sin(t * 6 + i) * 6, sy - rise, sz, sz), fill(i % 3 ? team.light : '#E0FAFF'));
+    }
+    return;
+  }
+  const fall = Math.min(1, t / 0.35);
+  canvas.saveLayer(layerAlphaPaint(alpha));
+  if (style === 0) {
+    // Assommé : il tourne, puis tombe
+    const spin = Math.min(1, t / 0.5);
+    canvas.rotate(dir * (spin * 360 * 0.5 + Math.min(1, Math.max(0, t - 0.4) / 0.3) * 80), 0, -20);
+  } else {
+    canvas.rotate(dir * fall * 85, 0, 0);
+  }
+  drawUnit(canvas, { ...u, flash: 1 - fall }, false, false, time);
+  canvas.restore();
+  if (style === 0) {
+    // Étoiles qui tournent au-dessus de la tête
+    for (let i = 0; i < 3; i++) {
+      const a = time * 6 + (i * Math.PI * 2) / 3;
+      const x = Math.cos(a) * 18;
+      const y = -78 + Math.sin(a) * 6;
+      const r = 5 * alpha;
+      canvas.save();
+      canvas.translate(x, y);
+      canvas.scale(r / 5, r / 5);
+      canvas.drawPath(starPath(), fill('#FFE14D'));
+      canvas.restore();
+    }
+  } else if (style === 1 && t < 0.4) {
+    // Croix de coups d'épée
+    const k = 1 - t / 0.4;
+    const w = 36;
+    canvas.drawLine(-w / 2, -60, w / 2, -10, line(rgba('255,255,255', k), 6));
+    canvas.drawLine(w / 2, -60, -w / 2, -10, line(rgba('255,255,255', k), 6));
+    canvas.drawLine(-w / 2, -60, w / 2, -10, line(rgba('255,90,90', k), 2));
+  } else if (style === 2) {
+    // Nuage de poudre
+    for (let i = 0; i < 5; i++) {
+      const r = (10 + i * 4) * (0.5 + t);
+      canvas.drawCircle(((i * 23) % 40) - 20, -40 - t * 30 - i * 6, r, fill(rgba('210,210,215', Math.max(0, 0.6 - t * 0.45))));
+    }
+  }
+}
+
+let star: SkPath | null = null;
+function starPath() {
+  if (!star) {
+    const b = Skia.PathBuilder.Make();
+    for (let i = 0; i < 10; i++) {
+      const r = i % 2 ? 2.2 : 5;
+      const a = (i * Math.PI) / 5 - Math.PI / 2;
+      if (i === 0) b.moveTo(Math.cos(a) * r, Math.sin(a) * r);
+      else b.lineTo(Math.cos(a) * r, Math.sin(a) * r);
+    }
+    b.close();
+    star = b.build();
+  }
+  return star;
+}
+
 /** Ce qui tombe du ciel pendant une frappe : météores, flèches, boulets, bombes, laser orbital. */
 function drawDrop(canvas: SkCanvas, age: number, x: number, y: number, s: number, height: number) {
   const top = y - height * s;
@@ -789,7 +980,8 @@ export function drawEpoch(canvas: SkCanvas, state: EpochState, view: EpochView, 
         if (!p) return;
         canvas.save();
         canvas.translate(p.x, p.y);
-        canvas.scale(p.s * (u.kind === 'heavy' ? 1.15 : 1), p.s * (u.kind === 'heavy' ? 1.15 : 1));
+        const us = p.s * (u.kind === 'heavy' ? 1.15 : 1) * (1 + u.age * 0.06);
+        canvas.scale(us, us);
         // Élan vers l'avant ou l'arrière, selon où est la cible
         canvas.translate(0, -u.aimZ * u.attack * 5 * p.s);
         drawUnit(canvas, u, state.bases[u.side].rage > 0, state.bases[u.side].healing > 0, state.time);
@@ -803,23 +995,18 @@ export function drawEpoch(canvas: SkCanvas, state: EpochState, view: EpochView, 
       },
     });
   }
-  // Troupes qui tombent à la renverse et s'effacent
+  // Troupes éliminées : chaque époque d'arme a sa façon de mettre K.O.
   for (const cp of state.corpses) {
     items.push({
       z: cp.unit.z,
       draw: () => {
         const p = proj.at(cp.unit.z, cp.unit.x);
         if (!p) return;
-        const fall = Math.min(1, cp.t / 0.35);
-        const alpha = cp.t < 0.8 ? 1 : Math.max(0, 1 - (cp.t - 0.8) / 0.6);
         canvas.save();
         canvas.translate(p.x, p.y);
-        const k = p.s * (cp.unit.kind === 'heavy' ? 1.15 : 1);
+        const k = p.s * (cp.unit.kind === 'heavy' ? 1.15 : 1) * (1 + cp.unit.age * 0.06);
         canvas.scale(k, k);
-        canvas.saveLayer(layerAlphaPaint(alpha));
-        canvas.rotate((cp.unit.side === 0 ? -1 : 1) * fall * 80, 0, 0);
-        drawUnit(canvas, { ...cp.unit, flash: 1 - fall, attack: 0 }, false, false, state.time);
-        canvas.restore();
+        drawCorpse(canvas, cp, state.time);
         canvas.restore();
       },
     });
@@ -847,9 +1034,12 @@ export function drawEpoch(canvas: SkCanvas, state: EpochState, view: EpochView, 
     if (!p) continue;
     canvas.save();
     canvas.translate(p.x, p.y);
-    drawShotLook(canvas, s.age, s.big, p.s);
+    if (s.kind) drawTurretShot(canvas, s, p.s, state.time);
+    else drawShotLook(canvas, s.age, s.big, p.s);
     canvas.restore();
   }
+  // Éclairs des tourelles de foudre
+  for (const bo of state.bolts) drawBolt(canvas, proj, bo);
   // Traces des coups au corps à corps
   for (const sl of state.slashes) {
     const p = proj.at(sl.z, sl.x, 34);
