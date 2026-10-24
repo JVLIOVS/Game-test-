@@ -1,11 +1,13 @@
+import { useEffect, useState } from 'react';
 import { Pressable, ScrollView, StyleSheet, Text, View } from 'react-native';
-import Animated, { FadeInDown, ZoomIn } from 'react-native-reanimated';
+import Animated, { Easing, FadeInDown, ZoomIn, useAnimatedStyle, useSharedValue, withDelay, withRepeat, withSequence, withTiming } from 'react-native-reanimated';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { CARD_ICONS } from '../game/data/perks';
 import { WEAPON_ICONS } from '../game/data/weapons';
 import { t, type TranslationKey } from '../i18n';
 import type { useMeta } from '../meta/useMeta';
 import { META_UPGRADES, PERK_UNLOCKS, WEAPON_UNLOCKS } from '../meta/upgrades';
+import { audio } from '../platform/audio';
 import { FONT } from '../ui/fonts';
 import type { Mode } from './Root';
 
@@ -25,7 +27,10 @@ function BuyButton({ cost, souls, done, label, onPress }: { cost: number; souls:
   const can = souls >= cost;
   return (
     <Pressable
-      onPress={onPress}
+      onPress={() => {
+        audio.sfx('buy');
+        onPress();
+      }}
       disabled={!can}
       accessibilityRole="button"
       style={({ pressed }) => [styles.buy, !can && styles.buyDisabled, pressed && styles.pressed]}
@@ -35,15 +40,57 @@ function BuyButton({ cost, souls, done, label, onPress }: { cost: number; souls:
   );
 }
 
+/** Mouvement doux et sans fin : le titre respire, les cartes flottent. */
+function useFloat(delay: number, amount: number, scale = false) {
+  const v = useSharedValue(0);
+  useEffect(() => {
+    v.value = withDelay(delay, withRepeat(withSequence(withTiming(1, { duration: 1400, easing: Easing.inOut(Easing.sin) }), withTiming(0, { duration: 1400, easing: Easing.inOut(Easing.sin) })), -1));
+  }, [v, delay]);
+  return useAnimatedStyle(() => (scale ? { transform: [{ scale: 1 + v.value * amount }] } : { transform: [{ translateY: -v.value * amount }] }));
+}
+
+function Floating({ delay, children }: { delay: number; children: React.ReactNode }) {
+  const style = useFloat(delay, 5);
+  return <Animated.View style={style}>{children}</Animated.View>;
+}
+
+/** Boutons pour couper ou remettre la musique et les bruitages. */
+function SoundToggles({ top }: { top: number }) {
+  const [, refresh] = useState(0);
+  useEffect(() => audio.subscribe(() => refresh((n) => n + 1)), []);
+  return (
+    <View style={[styles.sound, { top }]}>
+      <Pressable onPress={() => audio.setMusicOn(!audio.musicOn)} accessibilityRole="button" accessibilityLabel={t('menu.music')} style={[styles.soundBtn, !audio.musicOn && styles.soundOff]}>
+        <Text style={styles.soundIcon}>{audio.musicOn ? '🎵' : '🔇'}</Text>
+      </Pressable>
+      <Pressable
+        onPress={() => {
+          audio.setSfxOn(!audio.sfxOn);
+          audio.sfx('tap');
+        }}
+        accessibilityRole="button"
+        accessibilityLabel={t('menu.sounds')}
+        style={[styles.soundBtn, !audio.sfxOn && styles.soundOff]}
+      >
+        <Text style={styles.soundIcon}>{audio.sfxOn ? '🔊' : '🔈'}</Text>
+      </Pressable>
+    </View>
+  );
+}
+
 export function MenuScreen({ meta, onPlay }: { meta: Meta; onPlay: (mode: Mode) => void }) {
   const insets = useSafeAreaInsets();
   const m = meta.meta;
+  const titleStyle = useFloat(0, 0.05, true);
   return (
     <View style={styles.root}>
+      <SoundToggles top={insets.top + 10} />
       <ScrollView contentContainerStyle={[styles.content, { paddingTop: insets.top + 24, paddingBottom: insets.bottom + 40 }]}>
-        <Animated.Text entering={ZoomIn.springify().damping(11)} style={styles.title}>
-          Last{'\n'}EmberZ
-        </Animated.Text>
+        <Animated.View style={titleStyle}>
+          <Animated.Text entering={ZoomIn.springify().damping(11)} style={styles.title}>
+            Last{'\n'}EmberZ
+          </Animated.Text>
+        </Animated.View>
         <SoulBadge n={m.souls} big />
         <Text style={styles.record}>
           {m.runs > 0 ? t('menu.best', { w: m.best.world + 1, n: m.best.night, k: m.best.kills }) : t('menu.firstRun')}
@@ -58,8 +105,12 @@ export function MenuScreen({ meta, onPlay }: { meta: Meta; onPlay: (mode: Mode) 
             ] as const
           ).map((m, i) => (
             <Animated.View key={m.mode} entering={ZoomIn.delay(150 + i * 100).springify().damping(12)} style={styles.modeWrap}>
+              <Floating delay={i * 450}>
               <Pressable
-                onPress={() => onPlay(m.mode)}
+                onPress={() => {
+                  audio.sfx('go');
+                  onPlay(m.mode);
+                }}
                 accessibilityRole="button"
                 style={({ pressed }) => [styles.mode, { backgroundColor: m.color }, pressed && styles.pressed]}
               >
@@ -67,6 +118,7 @@ export function MenuScreen({ meta, onPlay }: { meta: Meta; onPlay: (mode: Mode) 
                 <Text style={styles.modeName}>{t(`mode.${m.mode}`)}</Text>
                 <Text style={styles.modeDesc}>{t(`mode.${m.mode}.desc`)}</Text>
               </Pressable>
+              </Floating>
             </Animated.View>
           ))}
         </View>
@@ -130,6 +182,10 @@ export function MenuScreen({ meta, onPlay }: { meta: Meta; onPlay: (mode: Mode) 
 
 const styles = StyleSheet.create({
   root: { flex: 1, backgroundColor: '#1E3B2E' },
+  sound: { position: 'absolute', right: 12, zIndex: 10, flexDirection: 'row', gap: 8 },
+  soundBtn: { width: 44, height: 44, borderRadius: 22, backgroundColor: 'rgba(43,34,56,0.85)', borderWidth: 3, borderColor: '#2B2238', alignItems: 'center', justifyContent: 'center' },
+  soundOff: { opacity: 0.55 },
+  soundIcon: { fontSize: 20 },
   content: { alignItems: 'center', paddingHorizontal: 16, gap: 14 },
   title: {
     fontSize: 46,

@@ -13,6 +13,7 @@ import { drawRefuge } from '../modes/refuge/render';
 import { buildTurret, createRefuge, newTurretCost, placeArtifact, playerSurvivor, stepRefuge, type RefugeSetup } from '../modes/refuge/sim';
 import type { ArtifactKind, DemonPower, RefugeEvent, RefugeState } from '../modes/refuge/types';
 import { applyRefugeDebugHash } from '../platform/debug';
+import { audio } from '../platform/audio';
 import { haptics } from '../platform/haptics';
 import { Banner, type BannerData } from '../ui/Banner';
 import { DemonPowerPick } from '../ui/DemonPowerPick';
@@ -121,6 +122,60 @@ function Boost({ icon, n }: { icon: string; n: number }) {
   );
 }
 
+/** Bruitages du mode Refuges : seulement ce qui concerne ta chambre (ou ta cible, en Démon). */
+function refugeSound(ev: RefugeEvent, s: RefugeState, mine: number | null, demonRole: boolean) {
+  const near = (roomId: number) => roomId === mine || (demonRole && s.demon.targetRoom === roomId);
+  switch (ev.type) {
+    case 'phase':
+      audio.sfx(ev.phase === 'choose' ? 'go' : ev.phase === 'arrival' ? 'roar' : 'horn');
+      break;
+    case 'bought':
+      if (s.survivors[ev.survivorId]?.isPlayer) audio.sfx('buy');
+      break;
+    case 'placed':
+      if (s.survivors[ev.survivorId]?.isPlayer) audio.sfx('build');
+      break;
+    case 'fire':
+      if (near(ev.roomId)) audio.sfx(ev.kind === 'arrow' ? 'arrow' : ev.kind === 'cannon' ? 'cannon' : ev.kind === 'laser' ? 'laser' : 'zap', ev.kind === 'cannon' ? 0.5 : 1);
+      break;
+    case 'doorHit':
+      if (near(ev.roomId)) audio.sfx('door_hit');
+      break;
+    case 'doorBroken':
+      if (near(ev.roomId)) audio.sfx('door_break');
+      break;
+    case 'eliminated':
+      audio.sfx('eliminated');
+      break;
+    case 'wave':
+      audio.sfx(ev.boss ? 'roar' : 'horn', ev.boss ? 0.8 : 0.5);
+      break;
+    case 'demonLevel':
+      if (!demonRole) audio.sfx('roar', 0.6);
+      break;
+    case 'demonPower':
+      if (demonRole) audio.sfx('levelup');
+      break;
+    case 'demonActive':
+      audio.sfx(ev.power === 'roar' ? 'roar' : ev.power === 'dash' ? 'dash' : 'special');
+      break;
+    case 'demonRetreat':
+      audio.sfx('wheel_win', 0.7);
+      break;
+    case 'demonKilled':
+      audio.sfx('explosion');
+      break;
+    case 'zombieKilled':
+      audio.sfx('splat', 0.6);
+      break;
+    case 'over':
+      audio.sfx(ev.won ? 'win' : 'lose');
+      break;
+    default:
+      break;
+  }
+}
+
 interface Props {
   setup: RefugeSetup;
   onFinish: (souls: number) => number;
@@ -177,6 +232,15 @@ export function RefugeScreen({ setup, onFinish, onRetry, onMenu }: Props) {
     if (bannerTimer.current) clearTimeout(bannerTimer.current);
   }, []);
 
+  // Musique tendue pendant toute la partie.
+  useEffect(() => {
+    audio.music('refuge');
+  }, []);
+  // Compte à rebours sonore au départ.
+  useEffect(() => {
+    if (hud.phase === 'intro' && hud.timer > 0) audio.sfx('beep');
+  }, [hud.phase, hud.timer]);
+
   const firePower = useCallback((p: DemonPower) => {
     if (useDemonPower(stateRef.current, p)) haptics.heavy();
   }, []);
@@ -212,6 +276,7 @@ export function RefugeScreen({ setup, onFinish, onRetry, onMenu }: Props) {
     const onEvent = (ev: RefugeEvent, now: number, s: RefugeState) => {
       const player = playerSurvivor(s);
       const mine = player ? player.roomId : null;
+      refugeSound(ev, s, mine, demonRole);
       switch (ev.type) {
         case 'phase':
           if (ev.phase === 'choose') {
@@ -313,6 +378,7 @@ export function RefugeScreen({ setup, onFinish, onRetry, onMenu }: Props) {
   }, []);
   const pickPower = useCallback((p: DemonPower) => {
     haptics.success();
+    audio.sfx('card');
     chooseDemonPower(stateRef.current, p);
   }, []);
 
@@ -491,7 +557,10 @@ export function RefugeScreen({ setup, onFinish, onRetry, onMenu }: Props) {
 
       {(hud.phase === 'choose' || hud.phase === 'siege') && (
         <Pressable
-          onPress={() => setOverview((v) => !v)}
+          onPress={() => {
+            audio.sfx('tap');
+            setOverview((v) => !v);
+          }}
           accessibilityRole="button"
           accessibilityLabel={t('refuge.eye')}
           style={({ pressed }) => [styles.eye, { bottom: insets.bottom + 18, left: insets.left + 12 }, overview && styles.eyeOn, pressed && styles.pressed]}

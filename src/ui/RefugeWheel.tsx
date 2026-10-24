@@ -5,6 +5,7 @@ import Animated, { FadeIn, ZoomIn, useAnimatedStyle, useSharedValue } from 'reac
 import { t, type TranslationKey } from '../i18n';
 import { ARTIFACTS, WHEEL } from '../modes/refuge/data';
 import type { WheelSpin } from '../modes/refuge/types';
+import { audio } from '../platform/audio';
 import { haptics } from '../platform/haptics';
 import { FONT } from './fonts';
 
@@ -43,9 +44,16 @@ export function RefugeWheel({ spin, onDone }: { spin: WheelSpin; onDone: () => v
     const start = Date.now();
     let raf = 0;
     rotation.value = 0;
+    let lastSeg = 0;
     const tick = () => {
       const p = Math.min(1, (Date.now() - start) / SPIN_MS);
       rotation.value = target * (1 - Math.pow(1 - p, 3));
+      // « Tic » à chaque case qui passe sous la flèche
+      const seg = Math.floor(rotation.value / SEG);
+      if (seg !== lastSeg) {
+        lastSeg = seg;
+        audio.sfx('wheel_tick');
+      }
       if (p < 1) raf = requestAnimationFrame(tick);
       else setStopped(true);
     };
@@ -61,6 +69,7 @@ export function RefugeWheel({ spin, onDone }: { spin: WheelSpin; onDone: () => v
   useEffect(() => {
     if (!stopped) return;
     haptics.success();
+    audio.sfx('wheel_win');
     const timer = setTimeout(onDone, 2200);
     return () => clearTimeout(timer);
   }, [stopped, onDone]);

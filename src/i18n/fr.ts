@@ -331,6 +331,8 @@ export const fr = {
   'upgrade.economy.desc': '+{n} % d’or gagné',
   'upgrade.walls': 'Remparts',
   'upgrade.walls.desc': '+{n} % de vie de base et de tourelle',
+  'menu.music': 'Musique',
+  'menu.sounds': 'Bruitages',
   'refuge.choose': 'Cours dans un refuge libre ! {n} s',
   'refuge.siege': 'Siège · {time}',
   'refuge.alive': '{n}/6 en vie',

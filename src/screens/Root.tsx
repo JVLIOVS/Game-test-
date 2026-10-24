@@ -1,7 +1,8 @@
-import { useCallback, useState } from 'react';
+import { useCallback, useEffect, useState } from 'react';
 import { Platform, View } from 'react-native';
 import { runBonuses } from '../meta/upgrades';
 import { useMeta } from '../meta/useMeta';
+import { audio } from '../platform/audio';
 import type { RefugeSetup } from '../modes/refuge/sim';
 import { EpochScreen } from './EpochScreen';
 import { GameScreen } from './GameScreen';
@@ -44,10 +45,25 @@ export function Root() {
   }, []);
   const home = useCallback(() => setScreen('menu'), []);
 
-  if (!meta.loaded) return <View style={{ flex: 1, backgroundColor: '#1E3B2E' }} />;
-  if (screen === 'menu') return <MenuScreen meta={meta} onPlay={play} />;
-  if (screen === 'refugeLobby') return <RefugeLobby initial={setup} onStart={startRefuge} onBack={home} />;
-  if (screen === 'epoch') return <EpochScreen key={run} onFinish={meta.recordSouls} onRetry={() => play('epoch')} onMenu={home} />;
-  if (screen === 'refuge') return <RefugeScreen key={run} setup={setup} onFinish={meta.recordSouls} onRetry={() => startRefuge(setup)} onMenu={home} />;
-  return <GameScreen key={run} mods={runBonuses(meta.meta)} onGameOver={meta.recordRun} onRetry={() => play('waves')} onMenu={home} />;
+  useEffect(() => {
+    void audio.init();
+  }, []);
+  // Musique de l'accueil et du choix du camp (chaque mode lance la sienne).
+  useEffect(() => {
+    if (screen === 'menu' || screen === 'refugeLobby') audio.music('menu');
+  }, [screen]);
+
+  let content;
+  if (!meta.loaded) content = <View style={{ flex: 1, backgroundColor: '#1E3B2E' }} />;
+  else if (screen === 'menu') content = <MenuScreen meta={meta} onPlay={play} />;
+  else if (screen === 'refugeLobby') content = <RefugeLobby initial={setup} onStart={startRefuge} onBack={home} />;
+  else if (screen === 'epoch') content = <EpochScreen key={run} onFinish={meta.recordSouls} onRetry={() => play('epoch')} onMenu={home} />;
+  else if (screen === 'refuge') content = <RefugeScreen key={run} setup={setup} onFinish={meta.recordSouls} onRetry={() => startRefuge(setup)} onMenu={home} />;
+  else content = <GameScreen key={run} mods={runBonuses(meta.meta)} onGameOver={meta.recordRun} onRetry={() => play('waves')} onMenu={home} />;
+  // Sur le web, le son ne peut démarrer qu'après un premier toucher.
+  return (
+    <View style={{ flex: 1 }} onTouchStart={() => audio.unlock()} onPointerDown={() => audio.unlock()}>
+      {content}
+    </View>
+  );
 }

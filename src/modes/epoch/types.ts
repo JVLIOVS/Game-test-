@@ -144,6 +144,8 @@ export type EpochEvent =
   | { type: 'special'; side: Side; age: number }
   | { type: 'crate'; bonus: Crate['bonus'] }
   | { type: 'skill'; side: Side; skill: SkillId }
+  | { type: 'attack'; side: Side; kind: UnitKind | 'turret'; age: number }
+  | { type: 'impact'; age: number }
   | { type: 'upgrade'; side: Side; id: UpgradeId; level: number }
   | { type: 'over'; won: boolean };
 

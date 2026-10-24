@@ -197,6 +197,7 @@ export type RefugeEvent =
   | { type: 'demonPower'; power: DemonPower; level: number }
   | { type: 'demonActive'; power: DemonPower }
   | { type: 'zombieKilled' }
+  | { type: 'fire'; roomId: number; kind: 'arrow' | 'cannon' | 'laser' | 'zap' }
   | { type: 'over'; won: boolean };
 
 export interface RefugeState {

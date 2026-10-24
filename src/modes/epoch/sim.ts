@@ -377,6 +377,7 @@ function pickTarget(state: EpochState, u: Unit): Unit | null {
 function strike(state: EpochState, u: Unit, target: Unit, mult: number) {
   u.cooldown = UNITS[u.kind].rate;
   u.attack = 1;
+  state.events.push({ type: 'attack', side: u.side, kind: u.kind, age: u.age });
   const d = dist2(u, target) || 1;
   u.aimX = (target.x - u.x) / d;
   u.aimZ = (target.z - u.z) / d;
@@ -531,6 +532,7 @@ function updateBases(state: EpochState, dt: number) {
       const enemy = nearestEnemy(state, side, baseZ(side));
       if (enemy && Math.abs(enemy.z - baseZ(side)) < TURRET.range && b.turretCooldown <= 0) {
         b.turretCooldown = TURRET.rate;
+        state.events.push({ type: 'attack', side, kind: 'turret', age: b.turret });
         state.shots.push({ side, z: baseZ(side) + dirOf(side) * 20, x: 0, h: 110, targetId: enemy.id, damage: TURRET.damage * ageStat(b.turret) * wallsMult(b), speed: SHOT_SPEED * 1.2, age: b.turret, big: true });
       }
     }
@@ -546,6 +548,7 @@ function updateStrikes(state: EpochState, dt: number) {
       if (drop.done || st.time < drop.t) continue;
       drop.done = true;
       const { z, x } = drop;
+      state.events.push({ type: 'impact', age: st.age });
       for (const u of [...state.units]) if (u.side !== st.side && Math.abs(u.z - z) < 55) hurtUnit(state, u, SPECIAL.damage * ageStat(st.age));
       burst(state, z, x, 10, 16, st.age >= 4 ? ['#8EC5FF', '#FFFFFF', '#C49AF0'] : ['#FFB020', '#FF6B2B', '#FFE14D', '#5A4A3A'], 1.3);
       state.trauma = Math.min(1, state.trauma + 0.08);

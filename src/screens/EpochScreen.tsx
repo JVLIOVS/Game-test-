@@ -10,6 +10,7 @@ import { MINIMAP, drawEpoch, makeProjection } from '../modes/epoch/render';
 import { buyTurret, buyUpgrade, collectCrate, createEpoch, evolve, stepEpoch, trainUnit, useSkill, useSpecial } from '../modes/epoch/sim';
 import type { EpochEvent, EpochState, SkillId, UnitKind } from '../modes/epoch/types';
 import { applyEpochDebugHash } from '../platform/debug';
+import { audio, type SfxName } from '../platform/audio';
 import { haptics } from '../platform/haptics';
 import { Banner, type BannerData } from '../ui/Banner';
 import { FONT } from '../ui/fonts';
@@ -93,6 +94,52 @@ function frontZ(s: EpochState) {
   return 0;
 }
 
+/** Bruit d'une attaque selon l'époque : gourdin, épée, flèche, mousquet, canon, laser… */
+function attackSound(kind: UnitKind | 'turret', age: number): SfxName {
+  if (age >= 4) return 'laser';
+  if (kind === 'inf') return age === 0 ? 'hit' : 'slash';
+  if (kind === 'archer' || kind === 'turret') return age === 0 ? 'swing' : age === 1 ? 'arrow' : 'shot';
+  return age === 0 ? 'hit' : age === 1 ? 'slash' : 'cannon';
+}
+
+function epochSound(ev: EpochEvent) {
+  switch (ev.type) {
+    case 'attack':
+      audio.sfx(attackSound(ev.kind, ev.age), ev.side === 0 ? 0.9 : 0.6);
+      break;
+    case 'impact':
+      audio.sfx(ev.age >= 4 ? 'zap' : 'explosion', 0.7);
+      break;
+    case 'spawn':
+      if (ev.side === 0) audio.sfx('spawn');
+      break;
+    case 'kill':
+      audio.sfx(ev.side === 0 ? 'coin' : 'hurt', 0.6);
+      break;
+    case 'baseHit':
+      if (ev.side === 0) audio.sfx('base_hit', 0.7);
+      break;
+    case 'evolve':
+      audio.sfx(ev.side === 0 ? 'evolve' : 'horn', ev.side === 0 ? 1 : 0.6);
+      break;
+    case 'special':
+      audio.sfx('special');
+      break;
+    case 'crate':
+      audio.sfx('crate');
+      break;
+    case 'skill':
+      audio.sfx(ev.skill === 'warcry' ? 'warcry' : 'heal', ev.side === 0 ? 1 : 0.6);
+      break;
+    case 'upgrade':
+      if (ev.side === 0) audio.sfx('buy');
+      break;
+    case 'over':
+      audio.sfx(ev.won ? 'win' : 'lose');
+      break;
+  }
+}
+
 interface Props {
   onFinish: (souls: number) => number;
   onRetry: () => void;
@@ -156,6 +203,7 @@ export function EpochScreen({ onFinish, onRetry, onMenu }: Props) {
     let current = readHud(stateRef.current);
 
     const onEvent = (ev: EpochEvent, now: number) => {
+      epochSound(ev);
       switch (ev.type) {
         case 'evolve':
           if (ev.side === 0) {
@@ -184,7 +232,10 @@ export function EpochScreen({ onFinish, onRetry, onMenu }: Props) {
           break;
         case 'over':
           if (ev.won) haptics.success();
-          else haptics.error();
+          else {
+                    haptics.error();
+                    audio.sfx('error');
+                  }
           break;
         default:
           break;
@@ -233,6 +284,11 @@ export function EpochScreen({ onFinish, onRetry, onMenu }: Props) {
     const r = hud.result;
     setSouls(onFinish(r.won ? 40 + r.age * 10 : 5 + r.age * 8 + Math.floor(r.kills / 8)));
   }, [hud.result, souls, onFinish]);
+
+  // Musique orchestrale pendant la partie.
+  useEffect(() => {
+    audio.music('epoch');
+  }, []);
 
   // ---------- Toucher : glisser pour regarder le chemin, toucher pour viser ou ramasser ----------
 
@@ -284,8 +340,14 @@ export function EpochScreen({ onFinish, onRetry, onMenu }: Props) {
 
   const s = stateRef.current;
   const press = (kind: UnitKind) => {
-    if (trainUnit(s, 0, kind)) haptics.light();
-    else haptics.error();
+    if (trainUnit(s, 0, kind)) {
+      haptics.light();
+      audio.sfx('tap');
+    }
+    else {
+                    haptics.error();
+                    audio.sfx('error');
+                  }
   };
   const queue = hud.queue ? (hud.queue.split(',') as UnitKind[]) : [];
   const canEvolveNow = hud.age < AGES - 1 && hud.xp >= 1;
@@ -342,6 +404,7 @@ export function EpochScreen({ onFinish, onRetry, onMenu }: Props) {
             <Pressable
               onPress={() => {
                 if (evolve(stateRef.current, 0)) haptics.success();
+                audio.sfx('tap');
               }}
               accessibilityRole="button"
               style={({ pressed }) => [styles.evolve, pressed && styles.pressed]}
@@ -376,7 +439,10 @@ export function EpochScreen({ onFinish, onRetry, onMenu }: Props) {
                   key={u.id}
                   onPress={() => {
                     if (buyUpgrade(stateRef.current, 0, u.id)) haptics.success();
-                    else haptics.error();
+                    else {
+                    haptics.error();
+                    audio.sfx('error');
+                  }
                   }}
                   accessibilityRole="button"
                   style={({ pressed }) => [styles.upCard, (max || hud.gold < cost) && styles.off, pressed && styles.pressed]}
@@ -420,8 +486,14 @@ export function EpochScreen({ onFinish, onRetry, onMenu }: Props) {
         <View pointerEvents="box-none" style={styles.buttons}>
           <Pressable
             onPress={() => {
-              if (buyTurret(stateRef.current, 0)) haptics.success();
-              else haptics.error();
+              if (buyTurret(stateRef.current, 0)) {
+                haptics.success();
+                audio.sfx('build');
+              }
+              else {
+                    haptics.error();
+                    audio.sfx('error');
+                  }
             }}
             accessibilityRole="button"
             style={({ pressed }) => [styles.small, styles.turret, (turretDone || hud.gold < turretPrice) && styles.off, pressed && styles.pressed]}
@@ -429,7 +501,11 @@ export function EpochScreen({ onFinish, onRetry, onMenu }: Props) {
             <Text style={styles.smallIcon}>🗼</Text>
             <Text style={styles.smallText}>{turretDone ? '✓' : turretPrice}</Text>
           </Pressable>
-          <Pressable onPress={() => setShop((v) => !v)} accessibilityRole="button" style={({ pressed }) => [styles.small, styles.shopBtn, shop && styles.aimingBtn, pressed && styles.pressed]}>
+          <Pressable
+            onPress={() => {
+              audio.sfx('tap');
+              setShop((v) => !v);
+            }} accessibilityRole="button" style={({ pressed }) => [styles.small, styles.shopBtn, shop && styles.aimingBtn, pressed && styles.pressed]}>
             <Text style={styles.smallIcon}>🔧</Text>
             <Text style={styles.smallText}>{t('epoch.upgrades')}</Text>
           </Pressable>
@@ -440,7 +516,10 @@ export function EpochScreen({ onFinish, onRetry, onMenu }: Props) {
                 key={k}
                 onPress={() => {
                   if (useSkill(stateRef.current, 0, k)) haptics.heavy();
-                  else haptics.error();
+                  else {
+                    haptics.error();
+                    audio.sfx('error');
+                  }
                 }}
                 accessibilityRole="button"
                 accessibilityLabel={t(`skill.${k}` as TranslationKey)}
@@ -453,8 +532,14 @@ export function EpochScreen({ onFinish, onRetry, onMenu }: Props) {
           })}
           <Pressable
             onPress={() => {
-              if (hud.special <= 0) setAiming((a) => !a);
-              else haptics.error();
+              if (hud.special <= 0) {
+                audio.sfx('tap');
+                setAiming((a) => !a);
+              }
+              else {
+                    haptics.error();
+                    audio.sfx('error');
+                  }
             }}
             accessibilityRole="button"
             style={({ pressed }) => [styles.small, styles.special, hud.special > 0 && styles.off, aiming && styles.aimingBtn, pressed && styles.pressed]}

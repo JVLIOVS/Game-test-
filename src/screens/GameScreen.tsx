@@ -11,6 +11,7 @@ import { worldDef } from '../game/data/worlds';
 import { t, type TranslationKey } from '../i18n';
 import { createJoystick, joystickEnd, joystickMove, joystickStart, readInput } from '../input/joystick';
 import { applyDebugHash } from '../platform/debug';
+import { audio, type SfxName } from '../platform/audio';
 import { haptics } from '../platform/haptics';
 import { drawWorld } from '../render/drawWorld';
 import { Banner, type BannerData } from '../ui/Banner';
@@ -40,6 +41,38 @@ interface Props {
   onRetry: () => void;
   onMenu: () => void;
 }
+
+/** Bruitage joué pour chaque événement du jeu. */
+const WAVES_SOUNDS: Partial<Record<GameEvent['type'], SfxName>> = {
+  treeHit: 'chop',
+  treeFelled: 'treefall',
+  zombieHit: 'hit',
+  zombieKilled: 'splat',
+  heroHurt: 'hurt',
+  heroDied: 'eliminated',
+  animalKilled: 'hit',
+  padFed: 'coin',
+  built: 'build',
+  structureHit: 'door_hit',
+  structureDestroyed: 'door_break',
+  nightStart: 'horn',
+  dayStart: 'go',
+  roundCleared: 'wheel_win',
+  bossSpawn: 'roar',
+  bossKilled: 'explosion',
+  levelUp: 'levelup',
+  gemPicked: 'coin',
+  bombExploded: 'explosion',
+  lightning: 'zap',
+  equipGained: 'buy',
+  weaponFound: 'buy',
+  happening: 'card',
+  unitSpawned: 'spawn',
+  crit: 'slash',
+  questDone: 'wheel_win',
+  worldAdvance: 'evolve',
+  gameOver: 'lose',
+};
 
 export function GameScreen({ mods, onGameOver, onRetry, onMenu }: Props) {
   const { width, height } = useWindowDimensions();
@@ -83,6 +116,11 @@ export function GameScreen({ mods, onGameOver, onRetry, onMenu }: Props) {
     if (bannerTimer.current) clearTimeout(bannerTimer.current);
   }, []);
 
+  // Musique de bataille pendant la partie.
+  useEffect(() => {
+    audio.music('waves');
+  }, []);
+
   // Clavier pour tester dans un navigateur d'ordinateur.
   useEffect(() => {
     if (Platform.OS !== 'web' || typeof window === 'undefined') return;
@@ -122,6 +160,8 @@ export function GameScreen({ mods, onGameOver, onRetry, onMenu }: Props) {
     const progress = { moved: false };
 
     const onEvent = (ev: GameEvent, now: number) => {
+      const sound = WAVES_SOUNDS[ev.type];
+      if (sound) audio.sfx(sound);
       switch (ev.type) {
         case 'treeHit':
         case 'zombieHit':
@@ -269,6 +309,7 @@ export function GameScreen({ mods, onGameOver, onRetry, onMenu }: Props) {
   const pickCard = useCallback(
     (card: CardId) => {
       const game = gameRef.current;
+      audio.sfx('card');
       chooseCard(game, card);
       joystickEnd(joystick);
       game.events.length = 0;
@@ -280,6 +321,7 @@ export function GameScreen({ mods, onGameOver, onRetry, onMenu }: Props) {
   const answerOffer = useCallback(
     (take: boolean) => {
       const game = gameRef.current;
+      audio.sfx(take ? 'buy' : 'tap');
       resolveWeaponOffer(game, take);
       joystickEnd(joystick);
       setHud(readHud(game));
@@ -303,6 +345,7 @@ export function GameScreen({ mods, onGameOver, onRetry, onMenu }: Props) {
   }, [hud.status, hud.nightsSurvived, soulsWon, onGameOver]);
 
   const reroll = useCallback(() => {
+    audio.sfx('card');
     rerollCards(gameRef.current);
     setHud(readHud(gameRef.current));
   }, []);

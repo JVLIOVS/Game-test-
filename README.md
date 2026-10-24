@@ -4,7 +4,15 @@ Jeu mobile iOS de survie en 2D vue du dessus, style cartoon. Expo + React Native
 
 L'accueil propose deux modes.
 
-## Mode Époques (nouveau)
+## Musique et bruitages
+
+Tout le son est fabriqué par programme (aucun fichier téléchargé), dans `scripts/audio/` :
+- `make_music.py` compose 4 musiques de hip-hop épique qui tournent en boucle : accueil (piano et cordes), mode Vagues (cuivres, chœurs, timbales), mode Refuges (trap sombre, boîte à musique), mode Époques (tambours taïko, cordes, cors) ;
+- `make_sfx.py` fabrique une quarantaine de bruitages (coups, épées, flèches, explosions, portes, rugissement du Démon, roue, évolution, fanfares de victoire et de défaite…).
+
+Relancer : `python scripts/audio/make_sfx.py` puis `python scripts/audio/make_music.py` (il faut numpy, scipy et ffmpeg). Lecture dans le jeu : `src/platform/audio.ts` (expo-audio). Boutons 🎵 et 🔊 en haut de l'accueil pour couper la musique ou les bruitages.
+
+## Mode Époques
 
 Deux camps face à face sur un même chemin, vu en perspective : ta base au premier plan, celle de l'adversaire à l'horizon. Chaque moitié du chemin prend le décor de l'époque de son camp.
 

@@ -81,6 +81,7 @@ function updateRoomDefenses(state: RefugeState, room: Room, dt: number) {
       room.boosts.stormCooldown = STORM.interval;
       const e = enemies[Math.floor(Math.random() * enemies.length)];
       zap(state, e.x + (Math.random() - 0.5) * 60, e.y - 340, e.x, e.y - 20);
+      state.events.push({ type: 'fire', roomId: room.id, kind: 'zap' });
       spawnBurst(state, e.x, e.y - 10, 10, 8, 'confetti', ['#FFFFFF', '#5BE0FF', '#FFE14D'], 1);
       hit(state, e.id, STORM.damage * mult, room);
     }
@@ -110,6 +111,7 @@ function updateRoomDefenses(state: RefugeState, room: Room, dt: number) {
     if (t.level === 4) t.beamTo = { x: target.x, y: target.y - 20 };
     if (t.cooldown > 0) continue;
     t.cooldown = def.interval;
+    state.events.push({ type: 'fire', roomId: room.id, kind: t.level === 4 ? 'laser' : t.level === 3 ? 'cannon' : 'arrow' });
     if (t.level === 4) {
       // Laser : dégâts continus, sans projectile.
       hit(state, target.id, def.damage * mult, room);
@@ -142,6 +144,7 @@ function updateRoomDefenses(state: RefugeState, room: Room, dt: number) {
       const target = enemies.reduce<Target | null>((b, e) => (!b || dist(spot.x, spot.y, e.x, e.y) < dist(spot.x, spot.y, b.x, b.y) ? e : b), null);
       if (!target || dist(spot.x, spot.y, target.x, target.y) > MEGA.range) continue;
       art.cooldown = MEGA.interval;
+      state.events.push({ type: 'fire', roomId: room.id, kind: 'cannon' });
       state.projectiles.push({
         x: spot.x,
         y: spot.y - 30,
@@ -157,6 +160,7 @@ function updateRoomDefenses(state: RefugeState, room: Room, dt: number) {
     } else if (kind === 'tesla') {
       // Éclair en chaîne de l'un à l'autre
       art.cooldown = TESLA.interval;
+      state.events.push({ type: 'fire', roomId: room.id, kind: 'zap' });
       let from = { x: spot.x, y: spot.y - 34 };
       const left = [...enemies];
       for (let n = 0; n < TESLA.chain && left.length; n++) {

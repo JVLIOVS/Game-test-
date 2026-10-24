@@ -333,6 +333,8 @@ export const en: Record<keyof typeof fr, string> = {
   'upgrade.economy.desc': '+{n}% gold earned',
   'upgrade.walls': 'Walls',
   'upgrade.walls.desc': '+{n}% base and turret strength',
+  'menu.music': 'Music',
+  'menu.sounds': 'Sound effects',
   'refuge.choose': 'Run into a free hideout! {n}s',
   'refuge.siege': 'Siege · {time}',
   'refuge.alive': '{n}/6 alive',

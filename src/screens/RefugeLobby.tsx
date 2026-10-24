@@ -6,6 +6,7 @@ import { t, type TranslationKey } from '../i18n';
 import { CHARACTERS, CHARACTER_IDS } from '../modes/refuge/data';
 import type { RefugeSetup } from '../modes/refuge/sim';
 import type { CharacterId, RefugeRole } from '../modes/refuge/types';
+import { audio } from '../platform/audio';
 import { FONT } from '../ui/fonts';
 
 // Avant une partie de Refuges : choisir son camp (survivant ou Démon), puis son personnage.
@@ -43,7 +44,10 @@ export function RefugeLobby({ initial, onStart, onBack }: Props) {
             return (
               <Animated.View key={r.role} entering={ZoomIn.delay(100 + i * 80).springify().damping(12)} style={styles.flex}>
                 <Pressable
-                  onPress={() => setRole(r.role)}
+                  onPress={() => {
+                    audio.sfx('tap');
+                    setRole(r.role);
+                  }}
                   accessibilityRole="button"
                   accessibilityState={{ selected: on }}
                   style={({ pressed }) => [styles.roleCard, { backgroundColor: on ? r.color : '#3A2E52', borderBottomColor: on ? r.dark : '#2B2238' }, pressed && styles.pressed]}
@@ -66,7 +70,10 @@ export function RefugeLobby({ initial, onStart, onBack }: Props) {
               return (
                 <Animated.View key={id} entering={FadeInDown.delay(80 * i)}>
                   <Pressable
-                    onPress={() => setCharacter(id)}
+                    onPress={() => {
+                      audio.sfx('tap');
+                      setCharacter(id);
+                    }}
                     accessibilityRole="button"
                     accessibilityState={{ selected: on }}
                     style={({ pressed }) => [styles.charCard, on && { borderColor: c.shirt, backgroundColor: '#4A3B66' }, pressed && styles.pressed]}
@@ -92,7 +99,10 @@ export function RefugeLobby({ initial, onStart, onBack }: Props) {
       </ScrollView>
 
       <View style={[styles.footer, { paddingBottom: insets.bottom + 16 }]}>
-        <Pressable onPress={() => onStart({ role, character })} accessibilityRole="button" style={({ pressed }) => [styles.play, pressed && styles.pressed]}>
+        <Pressable onPress={() => {
+            audio.sfx('go');
+            onStart({ role, character });
+          }} accessibilityRole="button" style={({ pressed }) => [styles.play, pressed && styles.pressed]}>
           <Text style={styles.playText}>{t('lobby.play')}</Text>
         </Pressable>
       </View>
