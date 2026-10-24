@@ -80,6 +80,8 @@ const POOL = 3;
 const MUSIC_VOLUME = 0.42;
 const STORAGE_KEY = 'last-emberz-audio';
 
+const COMBAT_PER_SEC = 10;
+const budget = { since: 0, used: 0 };
 const pools = new Map<SfxName, { players: AudioPlayer[]; next: number; last: number }>();
 let musicPlayer: AudioPlayer | null = null;
 let currentMusic: MusicName | null = null;
@@ -140,6 +142,15 @@ export const audio = {
     const p = pool(name);
     const now = Date.now();
     if (now - p.last < (GAP[name] ?? 40)) return;
+    // Budget global pour les bruits de combat : au plus une dizaine par seconde, tous confondus.
+    if (GAP[name] !== undefined) {
+      if (now - budget.since > 1000) {
+        budget.since = now;
+        budget.used = 0;
+      }
+      if (budget.used >= COMBAT_PER_SEC) return;
+      budget.used++;
+    }
     p.last = now;
     try {
       if (p.players.length < POOL) p.players.push(createAudioPlayer(SFX[name]));

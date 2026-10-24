@@ -15,6 +15,7 @@ import type { ArtifactKind, DemonPower, RefugeEvent, RefugeState } from '../mode
 import { applyRefugeDebugHash } from '../platform/debug';
 import { audio } from '../platform/audio';
 import { haptics } from '../platform/haptics';
+import { perf } from '../platform/perf';
 import { Banner, type BannerData } from '../ui/Banner';
 import { DemonPowerPick } from '../ui/DemonPowerPick';
 import { FONT } from '../ui/fonts';
@@ -272,6 +273,7 @@ export function RefugeScreen({ setup, onFinish, onRetry, onMenu }: Props) {
     let raf = 0;
     let lastHit = 0;
     let current = readHud(stateRef.current);
+    let lastHud = 0;
 
     const onEvent = (ev: RefugeEvent, now: number, s: RefugeState) => {
       const player = playerSurvivor(s);
@@ -342,16 +344,20 @@ export function RefugeScreen({ setup, onFinish, onRetry, onMenu }: Props) {
       const dt = last === 0 ? 1 / 60 : Math.min(MAX_DT, (now - last) / 1000);
       last = now;
       const s = stateRef.current;
-      stepRefuge(s, readInput(joystick, keys), dt);
+      perf.frame();
+      perf.time('simulation', () => stepRefuge(s, readInput(joystick, keys), dt));
       for (const ev of s.events) onEvent(ev, now, s);
       s.events.length = 0;
-      const next = readHud(s);
-      if (!same(next, current)) {
+      const next = perf.time('interface', () => readHud(s));
+      // L'interface n'est redessinée que quelques fois par seconde, sauf pour les changements importants.
+      const urgent = next.phase !== current.phase || next.paused !== current.paused || next.result !== current.result || next.playerAlive !== current.playerAlive || next.buildCell !== current.buildCell;
+      if (!same(next, current) && (urgent || now - lastHud > 180)) {
         current = next;
+        lastHud = now;
         setHud(next);
       }
       const canvas = recorder.beginRecording(bounds);
-      drawRefuge(canvas, s, { width, height, top: s.phase === 'arrival' ? 0 : hudBottom.current, cam: camera, overview: overviewRef.current }, fonts, joystick, dt);
+      perf.time('dessin', () => drawRefuge(canvas, s, { width, height, top: s.phase === 'arrival' ? 0 : hudBottom.current, cam: camera, overview: overviewRef.current }, fonts, joystick, dt));
       const pic = recorder.finishRecordingAsPicture();
       picture.value = pic;
       if (Platform.OS === 'web') {

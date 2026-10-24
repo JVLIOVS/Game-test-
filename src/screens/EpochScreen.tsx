@@ -12,6 +12,7 @@ import type { EpochEvent, EpochState, SkillId, UnitKind } from '../modes/epoch/t
 import { applyEpochDebugHash } from '../platform/debug';
 import { audio, type SfxName } from '../platform/audio';
 import { haptics } from '../platform/haptics';
+import { perf } from '../platform/perf';
 import { Banner, type BannerData } from '../ui/Banner';
 import { FONT } from '../ui/fonts';
 
@@ -201,6 +202,7 @@ export function EpochScreen({ onFinish, onRetry, onMenu }: Props) {
     let overtimeShown = false;
     let suddenShown = false;
     let current = readHud(stateRef.current);
+    let lastHud = 0;
 
     const onEvent = (ev: EpochEvent, now: number) => {
       epochSound(ev);
@@ -246,7 +248,8 @@ export function EpochScreen({ onFinish, onRetry, onMenu }: Props) {
       const dt = last === 0 ? 1 / 60 : Math.min(MAX_DT, (now - last) / 1000);
       last = now;
       const s = stateRef.current;
-      stepEpoch(s, dt);
+      perf.frame();
+      perf.time('simulation', () => stepEpoch(s, dt));
       for (const ev of s.events) onEvent(ev, now);
       s.events.length = 0;
       if (!overtimeShown && s.time > OVERTIME_START) {
@@ -259,13 +262,15 @@ export function EpochScreen({ onFinish, onRetry, onMenu }: Props) {
       }
       // La caméra suit le front, sauf juste après un glissement du doigt.
       if (s.time > cam.manualUntil) cam.z += (clamp(frontZ(s) - 120, CAM_MIN, CAM_MAX) - cam.z) * Math.min(1, dt * 1.8);
-      const next = readHud(s);
-      if (!same(next, current)) {
+      const next = perf.time('interface', () => readHud(s));
+      // L'interface n'est redessinée que quelques fois par seconde (sauf la fin de partie).
+      if (!same(next, current) && (next.result !== current.result || now - lastHud > 150)) {
         current = next;
+        lastHud = now;
         setHud(next);
       }
       const canvas = recorder.beginRecording(bounds);
-      drawEpoch(canvas, s, { width, height, camZ: cam.z, aiming: aimingRef.current }, fonts);
+      perf.time('dessin', () => drawEpoch(canvas, s, { width, height, camZ: cam.z, aiming: aimingRef.current }, fonts));
       const pic = recorder.finishRecordingAsPicture();
       picture.value = pic;
       if (Platform.OS === 'web') {

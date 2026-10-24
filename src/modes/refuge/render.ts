@@ -47,8 +47,8 @@ function drawRoomFloor(canvas: SkCanvas, room: Room, mine: boolean) {
   const r = room.inner;
   canvas.drawRect(Skia.XYWHRect(r.x, r.y, r.w, r.h), fill(COLORS.plank));
   for (let y = r.y + 20; y < r.y + r.h; y += 20) canvas.drawRect(Skia.XYWHRect(r.x, y, r.w, 2), fill(COLORS.plankLine));
-  // Lueur chaude du générateur : chaque refuge est une petite braise dans le noir.
-  canvas.drawCircle(room.gen.x, room.gen.y, 120 + room.gen.level * 12, fill('rgba(255,170,60,0.12)'));
+  // Lueur chaude autour du trône, seulement dans ta chambre (les grands halos coûtent cher à l'écran).
+  if (mine) canvas.drawCircle(room.gen.x, room.gen.y, 110 + room.gen.level * 8, fill('rgba(255,170,60,0.12)'));
   if (mine) canvas.drawRect(Skia.XYWHRect(r.x, r.y, r.w, r.h), stroke('rgba(255,210,90,0.5)', 4));
 }
 

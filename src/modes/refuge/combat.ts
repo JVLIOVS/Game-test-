@@ -122,7 +122,8 @@ export function damageDoor(state: RefugeState, room: Room, amount: number, quiet
 export function damageZombie(state: RefugeState, z: Zombie, amount: number, room: Room | null) {
   z.hp -= amount;
   z.hitFlash = 1;
-  if (amount >= 8) spawnText(state, z.x, z.y - 40, `${Math.round(amount)}`, FX_COLORS.textDamage, { size: 0.85 });
+  // Seuls les gros coups affichent un chiffre : trop de textes ralentissent l'affichage.
+  if (amount >= 30) spawnText(state, z.x, z.y - 40, `${Math.round(amount)}`, FX_COLORS.textDamage, { size: 0.85 });
   if (z.hp > 0) return;
   const i = state.zombies.indexOf(z);
   if (i < 0) return;
@@ -136,7 +137,7 @@ export function damageZombie(state: RefugeState, z: Zombie, amount: number, room
     const bounty = ZOMBIE_BOUNTY(state.wave) * (z.boss ? 15 : 1);
     owner.gold += bounty;
     room.roundScore += z.boss ? 10 : 1;
-    spawnText(state, z.x, z.y - 60, `+${bounty}`, FX_COLORS.textWood, { size: 0.8 });
+    if (owner.isPlayer) spawnText(state, z.x, z.y - 60, `+${bounty}`, FX_COLORS.textWood, { size: 0.8 });
   }
   state.events.push({ type: 'zombieKilled' });
 }
@@ -148,7 +149,7 @@ export function damageDemon(state: RefugeState, d: Demon, amount: number, room: 
   if (room) room.roundScore += amount / 40;
   // Seuls les gros coups le font clignoter (sinon le laser le laisserait tout blanc).
   if (amount >= 15) d.hitFlash = 1;
-  if (amount >= 10) spawnText(state, d.x, d.y - 90, `${amount}`, FX_COLORS.textBoss, { size: 0.9 });
+  if (amount >= 40) spawnText(state, d.x, d.y - 90, `${amount}`, FX_COLORS.textBoss, { size: 0.9 });
   if (d.hp > 0) return;
   d.hp = 0;
   if (d !== state.demon) {
