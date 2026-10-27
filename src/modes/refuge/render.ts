@@ -3,8 +3,9 @@ import type { JoystickState } from '../../input/joystick';
 import { drawFloatingTexts, drawOutlinedText, drawParticles, drawProjectile } from '../../render/fx';
 import { PALETTE as C, fill, layerAlpha, stroke } from '../../render/palette';
 import { drawHpBar, drawShadow, drawZombie } from '../../render/sprites';
+import { drawSprite, poseOf } from '../../render/spriteCache';
 import { ARENA_H, ARENA_W, ARRIVAL_TIME, CELL, DEMON_RADIUS, PAD_RADIUS, TURRET, WALL } from './balance';
-import { CENTER, cellTaken, doorRect } from './layout';
+import { CENTER, cellTaken, doorOutside, doorRect } from './layout';
 import { ALLIES, ROAR } from './data';
 import { DEVOUR_TIME, padOffer, playerSurvivor, turretOffer } from './sim';
 import type { Ally, Demon, PlacedArtifact, RefugePad, RefugeState, RefugeTurret, Room, Survivor } from './types';
@@ -152,12 +153,22 @@ function outlined(canvas: SkCanvas, path: SkPath, color: string, width = 5) {
 const TURRET_BASE = ['', '#9A6A42', '#7E8794', '#4A4F5E', '#E8ECF8'];
 
 /** Tourelle : arbalète en bois → baliste double → canon → laser de cristal. */
+/** Tourelle depuis le cache d'images : 32 orientations, 3 positions de recul. */
 function drawTurret(canvas: SkCanvas, t: RefugeTurret, time: number) {
   if (t.level === 0) return;
   const def = TURRET[t.level]!;
-  const recoil = Math.max(0, 1 - (def.interval - t.cooldown) / 0.15) * (t.level === 3 ? 7 : 4);
+  const recoil = Math.round(Math.max(0, 1 - (def.interval - t.cooldown) / 0.15) * 2) / 2;
+  const dirs = 32;
+  const a = poseOf(t.angle + Math.PI / dirs, dirs);
+  const glow = t.level >= 4 ? poseOf(time * 18, 4) : 0;
+  drawSprite(canvas, `t|${t.level}|${a}|${recoil}|${glow}`, t.x, t.y, [-44, -48, 88, 92], (c) =>
+    drawTurretShape(c, t.level, (a / dirs) * Math.PI * 2, recoil * (t.level === 3 ? 7 : 4), ((glow + 0.5) / 4) * ((Math.PI * 2) / 18)),
+  );
+}
+
+function drawTurretShape(canvas: SkCanvas, level: number, angle: number, recoil: number, time: number) {
+  const t = { level, angle };
   canvas.save();
-  canvas.translate(t.x, t.y);
   // Socle carré, propre à chaque niveau
   canvas.drawRRect(Skia.RRectXY(Skia.XYWHRect(-21, -17, 42, 38), 9, 9), fill(C.shadow));
   canvas.drawRRect(Skia.RRectXY(Skia.XYWHRect(-20, -20, 40, 38), 9, 9), fill(C.outline));
@@ -274,7 +285,49 @@ function drawAltar(canvas: SkCanvas, state: RefugeState) {
 const DEMON_SKIN = { skin: '#B8263A', dark: '#7E1830', chest: '#E0533D', wing: '#4A1F3D' };
 const CLONE_SKIN = { skin: '#8E4BC4', dark: '#5A2A86', chest: '#C49AF0', wing: '#2E1A4A' };
 
+/**
+ * Démon depuis le cache d'images : 12 poses de marche ou 8 de repos, dans les deux sens.
+ * Il était dessiné avec des dizaines de contours courbes à chaque image : c'était la cause du ralentissement.
+ * La transparence (sortie de terre, clones) passe par l'image au lieu d'un calque, bien plus léger.
+ */
 function drawDemon(canvas: SkCanvas, d: Demon, time: number) {
+  const rise = d.rise < 1 ? 1 - Math.pow(1 - d.rise, 3) : 1;
+  const alpha = d.rise < 1 ? 0.3 + 0.7 * rise : d.cloneTime > 0 ? (d.cloneTime < 3 ? 0.4 + 0.3 * Math.abs(Math.sin(time * 12)) : 0.8) : 1;
+  const walking = d.walkTime > 0;
+  const poses = walking ? 12 : 8;
+  const speed = walking ? 7 : 2.5;
+  const pose = poseOf((walking ? d.walkTime : time) * speed, poses);
+  // Toutes les petites animations (ailes, queue, flammes, yeux) suivent la même pose.
+  const clock = ((pose + 0.5) / poses) * ((Math.PI * 2) / speed);
+  const level = Math.min(10, d.level);
+  const lunge = Math.round(d.lunge * 2);
+  const flash = d.hitFlash > 0.6 ? 1 : 0;
+  const dir = d.dirX < 0 ? -1 : 1;
+  const hunt = d.state === 'hunt' ? 1 : 0;
+  const s = 0.82 + Math.min(0.45, level * 0.045);
+  canvas.save();
+  canvas.translate(d.x, d.y + (1 - rise) * 40);
+  if (d.state === 'heal') canvas.drawCircle(0, -50, 78, fill('rgba(140,255,140,0.16)'));
+  if (rise < 1) canvas.scale(0.4 + 0.6 * rise, 0.4 + 0.6 * rise);
+  const key = `d|${d.cloneTime > 0 ? 1 : 0}|${level}|${dir}|${walking ? 1 : 0}|${pose}|${lunge}|${flash}|${hunt}`;
+  drawSprite(
+    canvas,
+    key,
+    0,
+    0,
+    [-84 * s, -142 * s, 168 * s, 178 * s],
+    (c) =>
+      drawDemonShape(
+        c,
+        { ...d, x: 0, y: 0, rise: 1, level, dirX: dir, lunge: lunge / 2, hitFlash: flash, walkTime: walking ? clock : 0, state: hunt ? 'hunt' : 'attack' },
+        clock,
+      ),
+    { res: 1.5, alpha },
+  );
+  canvas.restore();
+}
+
+function drawDemonShape(canvas: SkCanvas, d: Demon, time: number) {
   const flash = d.hitFlash > 0.6;
   const pal = d.cloneTime > 0 ? CLONE_SKIN : DEMON_SKIN;
   const skin = flash ? C.white : pal.skin;
@@ -282,16 +335,11 @@ function drawDemon(canvas: SkCanvas, d: Demon, time: number) {
   const chest = flash ? C.white : pal.chest;
   const wing = flash ? C.white : pal.wing;
   const horn = flash ? C.white : '#F1E3C6';
-  const rise = d.rise < 1 ? 1 - Math.pow(1 - d.rise, 3) : 1;
-  const s = (0.82 + Math.min(0.45, d.level * 0.045)) * (0.4 + 0.6 * rise);
+  const s = 0.82 + Math.min(0.45, d.level * 0.045);
   const walking = d.walkTime > 0;
   const step = Math.sin(d.walkTime * 7);
   const bob = walking ? Math.abs(step) * 3 : Math.sin(time * 2.5) * 1.5;
   canvas.save();
-  canvas.translate(d.x, d.y + (1 - rise) * 40);
-  if (d.state === 'heal') canvas.drawCircle(0, -50, 78, fill('rgba(140,255,140,0.16)'));
-  if (d.rise < 1) canvas.saveLayer(layerAlpha(0.3 + 0.7 * rise));
-  else if (d.cloneTime > 0) canvas.saveLayer(layerAlpha(d.cloneTime < 3 ? 0.4 + 0.3 * Math.abs(Math.sin(time * 12)) : 0.8));
   // Aura de flammes au sol, plus haute à chaque niveau
   const fire = 10 + Math.min(14, d.level * 2);
   for (let i = 0; i < 5; i++) {
@@ -393,7 +441,6 @@ function drawDemon(canvas: SkCanvas, d: Demon, time: number) {
   canvas.drawCircle(0, 0, 7, fill(skin));
   outlined(canvas, cached('claws', (b) => b.moveTo(6, -8).lineTo(18, -10).lineTo(8, -3).close().moveTo(8, -2).lineTo(20, 0).lineTo(8, 3).close().moveTo(6, 5).lineTo(17, 10).lineTo(5, 9).close()), horn, 3);
   canvas.restore();
-  if (d.rise < 1 || d.cloneTime > 0) canvas.restore();
   canvas.restore();
 }
 
@@ -550,7 +597,17 @@ function drawTurretUpgrade(canvas: SkCanvas, room: Room, t: RefugeTurret, gold: 
 const HAIRS = ['#5A3A22', '#2B2238', '#C8783A', '#E8C468', '#7A4A2A', '#B0452A'];
 
 /** Compagnon : garde (casque, lance, bouclier), archère (capuche, arc), banquier (haut-de-forme, sac d'or). */
+/** Compagnon depuis le cache d'images. */
 function drawAlly(canvas: SkCanvas, a: Ally, time: number) {
+  const pose = poseOf(time * 3 + a.cell);
+  const anim = Math.round(a.anim * 2);
+  const dir = a.aimX < 0 ? -1 : 1;
+  drawSprite(canvas, `a|${a.kind}|${dir}|${anim}|${pose}`, a.x, a.y, [-30, -90, 60, 100], (c) =>
+    drawAllyShape(c, { ...a, x: 0, y: 0, cell: 0, aimX: dir, anim: anim / 2 }, ((pose + 0.5) / 8) * ((Math.PI * 2) / 3)),
+  );
+}
+
+function drawAllyShape(canvas: SkCanvas, a: Ally, time: number) {
   const ol = fill(C.outline);
   const bob = Math.sin(time * 3 + a.cell) * 1.2;
   canvas.save();
@@ -597,7 +654,21 @@ function drawAlly(canvas: SkCanvas, a: Ally, time: number) {
   canvas.restore();
 }
 
+/** Survivant depuis le cache d'images : 8 poses de marche ou de repos, dans les deux sens. */
 function drawSurvivor(canvas: SkCanvas, s: Survivor, time: number) {
+  const walking = s.walkTime > 0;
+  const pose = walking ? poseOf(s.walkTime * 16) : poseOf(time * 3);
+  const key = `s|${s.id % HAIRS.length}|${s.character}|${s.shirt}|${s.dirX > 0 ? 1 : -1}|${walking ? 1 : 0}|${pose}`;
+  drawSprite(canvas, key, s.x, s.y, [-40, -86, 80, 128], (c) =>
+    drawSurvivorShape(
+      c,
+      { ...s, x: 0, y: 0, dirX: s.dirX > 0 ? 1 : -1, walkTime: walking ? ((pose + 0.5) / 8) * ((Math.PI * 2) / 16) : 0 },
+      walking ? 0 : ((pose + 0.5) / 8) * ((Math.PI * 2) / 3),
+    ),
+  );
+}
+
+function drawSurvivorShape(canvas: SkCanvas, s: Survivor, time: number) {
   const walking = s.walkTime > 0;
   const phase = Math.sin(s.walkTime * 16);
   const bob = walking ? Math.abs(phase) * 4 : Math.sin(time * 3) * 1;
@@ -943,6 +1014,20 @@ export function drawRefuge(canvas: SkCanvas, state: RefugeState, view: RefugeVie
   }
   for (const p of state.projectiles) drawProjectile(canvas, p);
   for (const room of state.rooms) if (visible(room.door.x, room.door.y)) drawDoorEffects(canvas, room, state.time);
+  // Pouvoirs des survivants : glace devant la porte (Gel), anneau qui s'élargit (Onde de choc)
+  for (const room of state.rooms) {
+    if (room.freeze <= 0 || !visible(room.door.x, room.door.y)) continue;
+    const g = doorOutside(room, 70);
+    const k = Math.min(1, room.freeze / 0.5);
+    canvas.drawOval(Skia.XYWHRect(g.x - 150, g.y - 70, 300, 140), fill(rgba('160,225,255', 0.28 * k)));
+    canvas.drawOval(Skia.XYWHRect(g.x - 150, g.y - 70, 300, 140), stroke(rgba('230,250,255', 0.8 * k), 4));
+  }
+  for (const b of state.blasts) {
+    const k = b.t / 0.6;
+    const r = 40 + k * 260;
+    canvas.drawCircle(b.x, b.y, r, stroke(rgba('255,200,90', 1 - k), 14 * (1 - k) + 2));
+    canvas.drawCircle(b.x, b.y, r * 0.7, fill(rgba('255,160,60', 0.25 * (1 - k))));
+  }
   // Éclairs (orage, bobine Tesla)
   for (const z of state.zaps) {
     const path = Skia.Path.Make();

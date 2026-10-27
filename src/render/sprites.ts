@@ -3,6 +3,7 @@ import { SWING_DURATION, TREE_FALL_TIME, TREE_GROW_TIME, bossStats } from '../ga
 import { EQUIP_TIER_COLORS } from '../game/data/equipment';
 import type { Animal, Chest, EquipSlot, Hero, Pet, Structure, Tree, Turret, Unit, WeaponType, Zombie } from '../game/types';
 import { PALETTE as C, THEME, fill, layerAlpha, stroke } from './palette';
+import { drawSprite, poseOf } from './spriteCache';
 
 // Sprites dessinés par code. Chaque fonction dessine à l'origine (pieds/base en 0,0),
 // ce qui permettra plus tard de les remplacer par de vraies images.
@@ -120,12 +121,8 @@ function drawCanopy(canvas: SkCanvas, variant: number, golden = false) {
 
 /** Le feuillage devient transparent quand le héros passe derrière. */
 export function drawTree(canvas: SkCanvas, tree: Tree, time: number, heroBehind = false) {
-  if (heroBehind && tree.state === 'standing') {
-    canvas.saveLayer(layerAlpha(0.45));
-    drawTree(canvas, tree, time, false);
-    canvas.restore();
-    return;
-  }
+  // Arbre transparent quand le héros passe derrière (l'image est simplement dessinée plus pâle).
+  const alpha = heroBehind && tree.state === 'standing' ? 0.45 : 1;
   canvas.save();
   canvas.translate(tree.x, tree.y);
 
@@ -148,9 +145,20 @@ export function drawTree(canvas: SkCanvas, tree: Tree, time: number, heroBehind 
 
   canvas.rotate(angle, 0, 0);
   canvas.scale(scale, scale);
-  box(canvas, -9, -42, 18, 44, 5, C.trunk);
-  canvas.drawRRect(rrect(-6, -38, 5, 36, 3), fill(C.trunkLight));
-  drawCanopy(canvas, tree.variant, tree.golden);
+  // Tronc et feuillage depuis le cache d'images : un arbre demandait une vingtaine de formes.
+  drawSprite(
+    canvas,
+    `tree|${THEME().id}|${tree.variant}|${tree.golden ? 1 : 0}`,
+    0,
+    0,
+    [-70, -150, 140, 156],
+    (c) => {
+      box(c, -9, -42, 18, 44, 5, C.trunk);
+      c.drawRRect(rrect(-6, -38, 5, 36, 3), fill(C.trunkLight));
+      drawCanopy(c, tree.variant, tree.golden);
+    },
+    { res: 2, alpha },
+  );
   if (tree.golden) {
     for (let i = 0; i < 3; i++) {
       const a = time * 2 + i * 2.1;
@@ -338,7 +346,23 @@ export function drawHero(canvas: SkCanvas, hero: Hero, time: number, gear: Recor
   canvas.restore();
 }
 
+/** Zombie depuis le cache d'images : une image par pose (type, couleur, pas de marche, élan, flash). */
 export function drawZombie(canvas: SkCanvas, z: Zombie) {
+  const speed = z.boss ? 5 : 9;
+  const pose = poseOf(z.walkTime * speed);
+  const lunge = Math.round(z.lunge * 2);
+  const flash = z.hitFlash > 0.5 ? 1 : 0;
+  const slow = z.slow > 0.2 ? 1 : 0;
+  const poison = z.poisonTime > 0 ? 1 : 0;
+  const dir = z.vx >= 0 ? 1 : -1;
+  const sc = z.boss ? bossStats(1, z.bossSize === 'big' ? 'big' : 'mini').scale : z.kind === 'brute' ? 1.4 : z.kind === 'armored' ? 1.15 : 1;
+  const key = `z|${THEME().id}|${z.kind}|${z.variant % 3}|${z.boss ? z.bossSize : ''}|${z.golden ? 1 : 0}|${dir}|${pose}|${lunge}|${flash}${slow}${poison}`;
+  drawSprite(canvas, key, z.x, z.y, [-44 * sc, -82 * sc, 88 * sc, 96 * sc], (c) =>
+    drawZombieShape(c, { ...z, x: 0, y: 0, walkTime: ((pose + 0.5) / 8) * ((Math.PI * 2) / speed), lunge: lunge / 2, hitFlash: flash, slow, poisonTime: poison }),
+  );
+}
+
+function drawZombieShape(canvas: SkCanvas, z: Zombie) {
   const t = tintFor(z.hitFlash);
   const skin = z.golden ? '#FFD25A' : z.boss ? C.bossSkin : C.zombieSkin[z.variant % 3];
   const shirt = z.golden ? '#B8860B' : z.boss ? C.bossShirt : C.zombieShirt[z.variant % 3];
@@ -974,6 +998,21 @@ export function drawStructure(canvas: SkCanvas, s: Structure, baseX: number, bas
   canvas.translate(s.x, s.y);
   const k = s.pop < 1 ? Math.max(0.01, easeOutBack(s.pop)) : 1;
   canvas.scale(k, k);
+  if (s.kind !== 'trap' && s.kind !== 'catapult') {
+    // Bâtiment depuis le cache d'images : 8 poses d'animation (fumée, drapeaux) sur 2 secondes.
+    const flash = s.hitFlash > 0.5 ? 1 : 0;
+    const tp = Math.floor(time * 4) % 8;
+    drawSprite(canvas, `b|${THEME().id}|${s.kind}|${s.level}|${flash}|${tp}|${towerPhase}`, 0, 0, [-80, -175, 160, 205], (c) =>
+      drawStructureShape(c, { ...s, hitFlash: flash }, tp / 4, towerPhase),
+    );
+    canvas.restore();
+    return;
+  }
+  drawStructureShape(canvas, s, time, towerPhase);
+  canvas.restore();
+}
+
+function drawStructureShape(canvas: SkCanvas, s: Structure, time: number, towerPhase: number) {
   if (s.kind === 'house') drawHouse(canvas, s.level, s.hitFlash, time);
   else if (s.kind === 'tower') drawTower(canvas, s.hitFlash, towerPhase, s.level, time);
   else if (s.kind === 'lodge') drawLodge(canvas, s.level, s.hitFlash);
@@ -983,7 +1022,6 @@ export function drawStructure(canvas: SkCanvas, s: Structure, baseX: number, bas
   else if (s.kind === 'lumber') drawLumberCamp(canvas, s.level, s.hitFlash);
   else drawWorkshop(canvas, s.hitFlash, time);
   if (s.kind === 'barracks' || s.kind === 'lumber' || s.kind === 'lodge' || s.kind === 'tower') drawLevelPips(canvas, s.level);
-  canvas.restore();
 }
 
 function drawLevelPips(canvas: SkCanvas, level: number) {

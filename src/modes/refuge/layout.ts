@@ -60,6 +60,7 @@ function makeRoom(id: number, x: number, y: number, doorSide: 'top' | 'bottom'):
     shield: 0,
     shieldMax: 0,
     stun: 0,
+    freeze: 0,
     poison: { dps: 0, time: 0 },
     roundScore: 0,
     turretCostMult: 1,

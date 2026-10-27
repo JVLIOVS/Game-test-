@@ -42,6 +42,7 @@ export function createDemon(level = 1): Demon {
     dashX: 0,
     dashY: 0,
     slow: 0,
+    poison: { dps: 0, time: 0, roomId: -1 },
   };
 }
 
@@ -330,6 +331,8 @@ function tick(state: RefugeState, d: Demon, dt: number) {
   d.lunge = Math.max(0, d.lunge - dt * 3);
   d.attackCooldown -= dt;
   d.slow = slowAt(state, d.x, d.y);
+  // Figé par le pouvoir Gel d'un survivant : il ne frappe plus.
+  if (d.slow > 0.9) d.attackCooldown = Math.max(d.attackCooldown, 0.2);
   const regen = state.powers.regen ?? 0;
   if (regen > 0 && d.hp > 0) d.hp = Math.min(d.maxHp, d.hp + d.maxHp * REGEN_RATE[regen] * dt);
 }

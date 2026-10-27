@@ -72,12 +72,13 @@ export function applyDebugHash(state: GameState) {
  * Mode Refuges, dans le navigateur :
  * #refuge-vitrine : le joueur dans un refuge avec les 4 niveaux de tourelles, des artefacts, un bouclier,
  *   et le Démon qui attaque sa porte. #refuge-roue : siège lancé, la roue tourne au bout de 3 s.
+ * #refuge-heros : choix d'un pouvoir de survivant, boutons Gel et Onde de choc.
  * #refuge-demon-vite : rôle Démon, siège lancé, pouvoirs actifs déjà débloqués.
  */
 export function applyRefugeDebugHash(state: RefugeState) {
   if (Platform.OS !== 'web' || typeof window === 'undefined') return state;
   const hash = window.location.hash.toLowerCase();
-  const fast = hash.includes('vitrine') || hash.includes('roue') || hash.includes('vite') || hash.includes('roi') || hash.includes('devore');
+  const fast = hash.includes('vitrine') || hash.includes('roue') || hash.includes('vite') || hash.includes('roi') || hash.includes('devore') || hash.includes('heros');
   if (!fast) return state;
   // Tout le monde est déjà dans un refuge, le siège commence.
   state.survivors.forEach((s, i) => {
@@ -93,6 +94,11 @@ export function applyRefugeDebugHash(state: RefugeState) {
   state.demon.rise = 1;
   if (hash.includes('roue')) state.roundLength = 10;
   state.roundTimer = hash.includes('roue') ? 3 : 60;
+  // #refuge-heros : le choix d'un pouvoir de survivant arrive au bout de 2 s ; ceux d'avant sont déjà là.
+  if (hash.includes('heros')) {
+    state.heroTimer = 2;
+    state.survivors[0].powers = { freeze: 1, blast: 2, regen: 1 };
+  }
   // #refuge-roi : la partie se termine au bout de 4 s (cinématique de la couronne).
   if (hash.includes('roi')) state.phaseTimer = 4;
   // #refuge-devore : un survivant se fait dévorer tout de suite (petit cadre en bas).

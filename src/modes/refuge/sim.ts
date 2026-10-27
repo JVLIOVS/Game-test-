@@ -39,6 +39,7 @@ import { createDemon, updateDemons } from './demon';
 import { CENTER, cellTaken, createRooms, doorOutside, doorRect, facingAngle, insideRoom, roomCenter } from './layout';
 import type { ArtifactKind, CharacterId, RefugePad, RefugeRole, RefugeState, RefugeTurret, Room, Survivor } from './types';
 import { endRound } from './wheel';
+import { HERO_FIRST, HERO_FORTUNE, updateHeroPowers } from './heroPowers';
 
 /** Durée de la mini-cinématique « dévoré ». */
 export const DEVOUR_TIME = 2.6;
@@ -82,6 +83,8 @@ export function createRefuge(setup: RefugeSetup = { role: 'survivor', character:
       inventory: [],
       weapon: 1,
       weaponCooldown: 0,
+      powers: {},
+      powerCooldowns: {},
       shootAnim: 0,
       buildCell: null,
       goal: null,
@@ -119,6 +122,9 @@ export function createRefuge(setup: RefugeSetup = { role: 'survivor', character:
     powers: {},
     powerCooldowns: {},
     roarTime: 0,
+    heroChoice: null,
+    heroTimer: HERO_FIRST,
+    blasts: [],
     zombiesKilled: 0,
     zombieRoom: {},
     siegeStart: 0,
@@ -296,7 +302,7 @@ function updateSurvivors(state: RefugeState, input: PlayerInput, dt: number) {
     const room = state.rooms[s.roomId];
     // Or du générateur : tout l'or si on se tient dessus, une partie sinon.
     const onGen = dist(s.x, s.y, room.gen.x, room.gen.y) < PAD_RADIUS + 6;
-    s.gold += GEN_INCOME[room.gen.level] * (onGen ? 1 : OFF_GEN_RATIO) * (room.boosts.turbo > 0 ? 2 : 1) * dt;
+    s.gold += GEN_INCOME[room.gen.level] * (onGen ? 1 : OFF_GEN_RATIO) * (room.boosts.turbo > 0 ? 2 : 1) * HERO_FORTUNE[s.powers.fortune ?? 0] * dt;
     // Banquiers : de l'or en plus, même loin du trône.
     for (const a of room.allies) if (a.kind === 'banker') s.gold += BANKER_GOLD * a.power * dt;
     for (const pad of room.pads) {
@@ -495,7 +501,7 @@ function updateZombies(state: RefugeState, dt: number) {
 /** En pause pendant la roue du joueur ou son choix de pouvoir (rôle Démon). */
 const isOver = (state: RefugeState) => state.phase === 'over';
 
-export const isPaused = (state: RefugeState) => state.wheel !== null || state.powerChoice !== null;
+export const isPaused = (state: RefugeState) => state.wheel !== null || state.powerChoice !== null || state.heroChoice !== null;
 
 export function stepRefuge(state: RefugeState, input: PlayerInput, dt: number) {
   if (isPaused(state)) return;
@@ -538,6 +544,7 @@ export function stepRefuge(state: RefugeState, input: PlayerInput, dt: number) {
         updateZombies(state, dt);
       }
       updateDefenses(state, dt);
+      updateHeroPowers(state, dt);
     }
   }
   updateEffects(state, dt);

@@ -11,18 +11,22 @@ import { ACTIVE_POWERS, ARTIFACTS, CHARACTERS, DEMON_POWERS } from '../modes/ref
 import { chooseDemonPower, graceLeft, useDemonPower } from '../modes/refuge/demon';
 import { drawRefuge } from '../modes/refuge/render';
 import { FINALE_TIME, buildTurret, createRefuge, newTurretCost, placeArtifact, playerSurvivor, stepRefuge, type RefugeSetup } from '../modes/refuge/sim';
-import type { ArtifactKind, DemonPower, RefugeEvent, RefugeState } from '../modes/refuge/types';
+import type { ArtifactKind, DemonPower, HeroPower, RefugeEvent, RefugeState } from '../modes/refuge/types';
 import { applyRefugeDebugHash } from '../platform/debug';
 import { audio } from '../platform/audio';
 import { haptics } from '../platform/haptics';
 import { perf } from '../platform/perf';
 import { Banner, type BannerData } from '../ui/Banner';
 import { DemonPowerPick } from '../ui/DemonPowerPick';
+import { HeroPowerPick } from '../ui/HeroPowerPick';
+import { HERO_POWERS, HERO_POWER_IDS, chooseHeroPower, useHeroPower } from '../modes/refuge/heroPowers';
 import { FONT } from '../ui/fonts';
 import { Hint } from '../ui/Hint';
 import { RefugeWheel } from '../ui/RefugeWheel';
 
 const MAX_DT = 1 / 30;
+/** Pas plus de 0,1 s rattrapé d'un coup (par exemple au retour dans l'appli). */
+const MAX_ELAPSED = 0.1;
 const BANNER_TIME = 2000;
 const FONT_FILE = require('@expo-google-fonts/fredoka/700Bold/Fredoka_700Bold.ttf');
 /** Touches du clavier pour les pouvoirs du Démon (test dans un navigateur). */
@@ -63,6 +67,8 @@ interface Hud {
   /** Case vide sous les pieds du joueur (menu de construction), artefacts à poser, prix d'une tourelle. */
   buildCell: number | null;
   bagKey: string;
+  /** Pouvoirs du survivant : "freeze:2:12,regen:1:0" (niveau et recharge). */
+  heroKey: string;
   turretCost: number | null;
   result: RefugeState['result'];
   /** Bilan du joueur, figé dès qu'il est éliminé (ou à la fin de la partie). */
@@ -91,10 +97,11 @@ function readHud(s: RefugeState): Hud {
     boostStorm: room ? Math.ceil(room.boosts.storm) : 0,
     grace: s.role === 'demon' && s.phase === 'siege' ? Math.ceil(graceLeft(s)) : 0,
     powersKey: ACTIVE_POWERS.filter((k) => s.powers[k]).map((k) => `${k}:${s.powers[k]}:${Math.ceil(s.powerCooldowns[k] ?? 0)}`).join(','),
-    paused: s.wheel !== null || s.powerChoice !== null,
+    paused: s.wheel !== null || s.powerChoice !== null || s.heroChoice !== null,
     cinematic: s.devours.length > 0 || (s.finale !== null && s.finale.t < FINALE_TIME),
     buildCell: p && p.alive && s.phase === 'siege' ? p.buildCell : null,
     bagKey: p ? p.inventory.join(',') : '',
+    heroKey: p ? HERO_POWER_IDS.filter((k) => p.powers[k]).map((k) => `${k}:${p.powers[k]}:${Math.ceil(p.powerCooldowns[k] ?? 0)}`).join(',') : '',
     turretCost: room ? newTurretCost(room) : null,
     result: s.result,
     mine:
@@ -138,6 +145,9 @@ function refugeSound(ev: RefugeEvent, s: RefugeState, mine: number | null, demon
       break;
     case 'placed':
       if (s.survivors[ev.survivorId]?.isPlayer) audio.sfx('build');
+      break;
+    case 'heroActive':
+      if (near(ev.roomId)) audio.sfx(ev.power === 'freeze' ? 'freeze' : 'explosion');
       break;
     case 'fire':
       if (near(ev.roomId)) audio.sfx(ev.kind === 'arrow' ? 'arrow' : ev.kind === 'cannon' ? 'cannon' : ev.kind === 'laser' ? 'laser' : 'zap', ev.kind === 'cannon' ? 0.5 : 1);
@@ -350,11 +360,17 @@ export function RefugeScreen({ setup, onFinish, onRetry, onMenu }: Props) {
     };
 
     const frame = (now: number) => {
-      const dt = last === 0 ? 1 / 60 : Math.min(MAX_DT, (now - last) / 1000);
+      // Si le téléphone n'affiche pas assez d'images, on fait plusieurs petits pas de jeu : la partie ne ralentit pas.
+      const elapsed = last === 0 ? 1 / 60 : Math.min(MAX_ELAPSED, (now - last) / 1000);
+      const steps = Math.ceil(elapsed / MAX_DT - 0.01);
+      const dt = elapsed / steps;
       last = now;
       const s = stateRef.current;
       perf.frame();
-      perf.time('simulation', () => stepRefuge(s, readInput(joystick, keys), dt));
+      const input = readInput(joystick, keys);
+      perf.time('simulation', () => {
+        for (let i = 0; i < steps; i++) stepRefuge(s, input, dt);
+      });
       for (const ev of s.events) onEvent(ev, now, s);
       s.events.length = 0;
       const next = perf.time('interface', () => readHud(s));
@@ -366,7 +382,7 @@ export function RefugeScreen({ setup, onFinish, onRetry, onMenu }: Props) {
         setHud(next);
       }
       const canvas = recorder.beginRecording(bounds);
-      perf.time('dessin', () => drawRefuge(canvas, s, { width, height, top: s.phase === 'arrival' ? 0 : hudBottom.current, cam: camera, overview: overviewRef.current }, fonts, joystick, dt));
+      perf.time('dessin', () => drawRefuge(canvas, s, { width, height, top: s.phase === 'arrival' ? 0 : hudBottom.current, cam: camera, overview: overviewRef.current }, fonts, joystick, elapsed));
       const pic = recorder.finishRecordingAsPicture();
       picture.value = pic;
       if (Platform.OS === 'web') {
@@ -395,6 +411,20 @@ export function RefugeScreen({ setup, onFinish, onRetry, onMenu }: Props) {
     haptics.success();
     audio.sfx('card');
     chooseDemonPower(stateRef.current, p);
+  }, []);
+  const pickHero = useCallback((p: HeroPower) => {
+    const st = stateRef.current;
+    const me = playerSurvivor(st);
+    if (!me) return;
+    haptics.success();
+    audio.sfx('card');
+    chooseHeroPower(st, me, p);
+  }, []);
+  const fireHero = useCallback((p: HeroPower) => {
+    const st = stateRef.current;
+    const me = playerSurvivor(st);
+    if (me && useHeroPower(st, me, p)) haptics.heavy();
+    else haptics.error();
   }, []);
 
   const onStart = (e: GestureResponderEvent) => joystickStart(joystick, e.nativeEvent.pageX, e.nativeEvent.pageY);
@@ -429,6 +459,9 @@ export function RefugeScreen({ setup, onFinish, onRetry, onMenu }: Props) {
         : null;
   const character = !demonRole ? CHARACTERS[setup.character] : null;
   const actives = hud.powersKey ? hud.powersKey.split(',').map((x) => x.split(':')) : [];
+  const heroes = hud.heroKey ? hud.heroKey.split(',').map((x) => x.split(':')) : [];
+  const heroActives = heroes.filter(([id]) => HERO_POWERS[id as HeroPower].active);
+  const heroPassives = heroes.filter(([id]) => !HERO_POWERS[id as HeroPower].active);
 
 
   let endTitle: string;
@@ -509,6 +542,11 @@ export function RefugeScreen({ setup, onFinish, onRetry, onMenu }: Props) {
                 <Boost icon="💪" n={hud.boostPower} />
                 <Boost icon="⚙️" n={hud.boostTurbo} />
                 <Boost icon="⚡" n={hud.boostStorm} />
+                {heroPassives.length > 0 && (
+                  <View style={[styles.boost, styles.heroPill]}>
+                    <Text style={styles.boostText}>{heroPassives.map(([id, lv]) => `${HERO_POWERS[id as HeroPower].icon}${lv}`).join(' ')}</Text>
+                  </View>
+                )}
                 {bag.length > 0 && (
                   <View style={[styles.boost, styles.bag]}>
                     <Text style={styles.boostText}>🎒 {bag.map((k) => ARTIFACTS[k].icon).join('')}</Text>
@@ -519,6 +557,26 @@ export function RefugeScreen({ setup, onFinish, onRetry, onMenu }: Props) {
           </View>
         )}
       </View>
+
+      {!demonRole && hud.phase === 'siege' && hud.playerAlive && heroActives.length > 0 && (
+        <View pointerEvents="box-none" style={[styles.powers, { bottom: insets.bottom + 24, right: insets.right + 16 }]}>
+          {heroActives.map(([id, lv, cd]) => {
+            const wait = Number(cd);
+            return (
+              <Pressable
+                key={id}
+                onPress={() => fireHero(id as HeroPower)}
+                accessibilityRole="button"
+                accessibilityLabel={t(`hero.${id}` as TranslationKey)}
+                style={({ pressed }) => [styles.powerBtn, styles.heroBtn, wait > 0 && styles.powerOff, pressed && styles.pressed]}
+              >
+                <Text style={styles.powerIcon}>{HERO_POWERS[id as HeroPower].icon}</Text>
+                {wait > 0 ? <Text style={styles.powerWait}>{wait}</Text> : <Text style={styles.heroLv}>{lv}</Text>}
+              </Pressable>
+            );
+          })}
+        </View>
+      )}
 
       {demonRole && hud.phase === 'siege' && actives.length > 0 && (
         <View pointerEvents="box-none" style={[styles.powers, { bottom: insets.bottom + 24, right: insets.right + 16 }]}>
@@ -588,6 +646,7 @@ export function RefugeScreen({ setup, onFinish, onRetry, onMenu }: Props) {
       <Banner banner={banner} />
 
       {s.wheel && <RefugeWheel key={s.wheel.id} spin={s.wheel} onDone={closeWheel} />}
+      {s.heroChoice && !demonRole && <HeroPowerPick options={s.heroChoice} owned={playerSurvivor(s)?.powers ?? {}} onPick={pickHero} />}
       {s.powerChoice && <DemonPowerPick level={hud.demonLevel} options={s.powerChoice} owned={s.powers} onPick={pickPower} />}
 
       {showEnd && (
@@ -645,6 +704,9 @@ const styles = StyleSheet.create({
   boostText: { color: '#FFFFFF', fontSize: 13, fontFamily: FONT.bold },
   shieldFill: { position: 'absolute', left: 2, top: 2, height: 4, borderRadius: 2, backgroundColor: '#9EDBFF' },
   powers: { position: 'absolute', flexDirection: 'row', gap: 12, alignItems: 'center' },
+  heroBtn: { backgroundColor: '#2E5AAE' },
+  heroLv: { position: 'absolute', top: 2, right: 6, color: '#FFD25A', fontSize: 13, fontFamily: FONT.bold },
+  heroPill: { backgroundColor: 'rgba(46,90,174,0.9)' },
   powerBtn: { width: 66, height: 66, borderRadius: 33, backgroundColor: '#7E3AA3', borderWidth: 4, borderColor: '#2B2238', alignItems: 'center', justifyContent: 'center' },
   powerOff: { backgroundColor: '#3A2E52', opacity: 0.85 },
   powerIcon: { fontSize: 30 },

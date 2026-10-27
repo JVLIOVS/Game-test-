@@ -61,6 +61,8 @@ Six survivants (toi et cinq robots) démarrent au centre d'une arène fermée. H
 
 Code : `src/modes/refuge/` (simulation `sim.ts`, Démon `demon.ts`, défenses `defense.ts`, roue `wheel.ts`, contenu `data.ts`, robots `ai.ts`, rendu `render.ts`) et les écrans `RefugeLobby.tsx` et `RefugeScreen.tsx`.
 
+- **Pouvoirs des survivants** (comme le Démon) : peu après le début du siège puis chaque minute, choisir un pouvoir nouveau ou plus fort — 💚 régénération de la porte, ☣️ tirs toxiques, 🎯 tourelle vivante (tirer même sur son trône), 💰 fortune, ❄️ gel (bouton : fige les attaquants) et 💥 onde de choc (bouton : explose les zombies). Les robots en reçoivent aussi. Web : `#refuge-heros`.
+
 ## Mode Vagues
 
 Une seule carte, ta base au centre, la forêt autour.
@@ -160,3 +162,7 @@ npm run web:build    # version web dans dist/
 ```
 
 Robots de test : `npm run playtest -- 5` (mode Vagues) et `npx tsx scripts/refugePlaytest.ts 5` (mode Refuges). Version web : ajoute `#refuge` à l'adresse pour lancer directement le mode Refuges, `#refuge-jeu` (survivant directement), `#refuge-demon` (rôle Démon), `#refuge-vitrine` (tourelles, artefacts, bouclier), `#refuge-roue` (la roue au bout de 3 s), `#refuge-demon-vite` (rôle Démon avec les pouvoirs). Rôle Démon au clavier : flèches, puis 1, 2, 3 pour les pouvoirs. Test robots du rôle Démon : `ROLE=demon npx tsx scripts/refugePlaytest.ts 5`.
+
+## Fluidité
+
+Les personnages, bâtiments, arbres, accessoires et textes sont dessinés une fois dans de petites images (`src/render/spriteCache.ts`), puis recopiés : une image coûte une opération au lieu de dizaines de formes. Le sol des Vagues est pré-dessiné en grandes dalles, le chemin d'Époques en quelques formes. Sur le web, l'image est limitée à 1,5 pixel par point. Si un téléphone n'affiche pas assez d'images, la partie fait plusieurs petits pas de calcul par image : elle ne ralentit pas.

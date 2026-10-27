@@ -1,21 +1,40 @@
 import { Skia, type SkCanvas, type SkFont } from '@shopify/react-native-skia';
 import type { FloatingText, Particle, Projectile } from '../game/types';
 import { PALETTE as C, fill, stroke } from './palette';
+import { drawSprite } from './spriteCache';
 import { drawLogIcon } from './sprites';
 
 // Effets communs à tous les modes : particules, chiffres qui sautent, projectiles.
 
+const fontIds = new WeakMap<SkFont, number>();
+const widths = new Map<string, number>();
+
+/**
+ * Texte avec un contour sombre. Le contour d'un texte coûte très cher à dessiner sur téléphone :
+ * chaque texte est donc dessiné une fois dans une image (cache), puis recopié.
+ */
 export function drawOutlinedText(canvas: SkCanvas, text: string, x: number, y: number, font: SkFont, color: string, alpha = 1) {
-  const w = font.getTextWidth(text);
-  const outline = stroke(C.outline, 5);
-  const body = fill(color);
-  outline.setAlphaf(alpha);
-  body.setAlphaf(alpha);
-  canvas.drawText(text, x - w / 2, y, outline, font);
-  canvas.drawText(text, x - w / 2, y, body, font);
-  outline.setAlphaf(1);
-  body.setAlphaf(1);
+  let id = fontIds.get(font);
+  if (id === undefined) {
+    id = Math.random();
+    fontIds.set(font, id);
+  }
+  const wkey = `${id}|${text}`;
+  let w = widths.get(wkey);
+  if (w === undefined) {
+    w = font.getTextWidth(text);
+    if (widths.size > 2000) widths.clear();
+    widths.set(wkey, w);
+  }
+  const size = font.getSize();
+  const tw = w;
+  drawSprite(canvas, `txt|${wkey}|${color}`, x, y, [-tw / 2 - 5, -size - 4, tw + 10, size * 1.45 + 8], (c) => drawOutlinedTextNow(c, text, 0, 0, font, color, tw), { alpha, group: 'text' });
   return w;
+}
+
+function drawOutlinedTextNow(canvas: SkCanvas, text: string, x: number, y: number, font: SkFont, color: string, w: number) {
+  canvas.drawText(text, x - w / 2, y, stroke(C.outline, 5), font);
+  canvas.drawText(text, x - w / 2, y, fill(color), font);
 }
 
 export function drawParticles(canvas: SkCanvas, particles: Particle[], visible: (x: number, y: number) => boolean) {

@@ -20,6 +20,8 @@ import { FONT } from '../ui/fonts';
 // et détruis la base adverse.
 
 const MAX_DT = 1 / 30;
+/** Pas plus de 0,1 s rattrapé d'un coup (par exemple au retour dans l'appli). */
+const MAX_ELAPSED = 0.1;
 const BANNER_TIME = 1800;
 const FONT_FILE = require('@expo-google-fonts/fredoka/700Bold/Fredoka_700Bold.ttf');
 /** La caméra reprend seule le suivi du front quelques secondes après un glissement du doigt. */
@@ -276,11 +278,16 @@ export function EpochScreen({ setup, onFinish, onRetry, onMenu }: Props) {
     };
 
     const frame = (now: number) => {
-      const dt = last === 0 ? 1 / 60 : Math.min(MAX_DT, (now - last) / 1000);
+      // Si le téléphone n'affiche pas assez d'images, on fait plusieurs petits pas de jeu : la partie ne ralentit pas.
+      const elapsed = last === 0 ? 1 / 60 : Math.min(MAX_ELAPSED, (now - last) / 1000);
+      const steps = Math.ceil(elapsed / MAX_DT - 0.01);
+      const dt = elapsed / steps;
       last = now;
       const s = stateRef.current;
       perf.frame();
-      perf.time('simulation', () => stepEpoch(s, dt));
+      perf.time('simulation', () => {
+        for (let i = 0; i < steps; i++) stepEpoch(s, dt);
+      });
       for (const ev of s.events) onEvent(ev, now);
       s.events.length = 0;
       if (!overtimeShown && s.time > OVERTIME_START) {

@@ -33,7 +33,7 @@ function fromHash(): { screen: Screen; setup: RefugeSetup; epoch: EpochSetup } {
   }
   if (!hash.includes('refuge')) return { screen: 'waves', setup, epoch };
   if (hash.includes('demon')) return { screen: 'refuge', setup: { ...setup, role: 'demon' }, epoch };
-  if (['jeu', 'vitrine', 'roue', 'roi', 'devore'].some((k) => hash.includes(k))) return { screen: 'refuge', setup, epoch };
+  if (['jeu', 'vitrine', 'roue', 'roi', 'devore', 'heros'].some((k) => hash.includes(k))) return { screen: 'refuge', setup, epoch };
   return { screen: 'refugeLobby', setup, epoch };
 }
 

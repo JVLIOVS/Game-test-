@@ -4,7 +4,7 @@ import type { Zombie } from '../../game/types';
 import { DEMON_ARMOR, TURRET_GUARD, ZOMBIE_BOUNTY } from './balance';
 import { FROST_SLOW, GUARD, HIDE_MULT } from './data';
 import { doorOutside, doorRect, insideRoom } from './layout';
-import type { Demon, Rect, RefugeState, Room, Survivor } from './types';
+import type { Demon, HeroPower, Rect, RefugeState, Room, Survivor } from './types';
 
 // Outils partagés du mode Refuges : déplacements, collisions, dégâts, éliminations, fin de partie.
 
@@ -49,8 +49,16 @@ export function guards(room: Room, x: number, y: number) {
   return dist(x, y, g.x, g.y) < TURRET_GUARD || insideRoom(room, x, y);
 }
 
-/** Ralentissement du totem de givre à cet endroit. */
+/** Tirs toxiques (pouvoir de survivant) : part des dégâts infligée en plus, en poison, sur 3 secondes. */
+export const HERO_TOXIC = [0, 0.2, 0.35, 0.5];
+const TOXIC_TIME = 3;
+/** Pouvoir Gel : les ennemis devant la porte sont presque immobiles. */
+const FREEZE_SLOW = 0.92;
+const heroLevel = (state: RefugeState, room: Room | null, p: HeroPower) => (room && room.owner !== null ? (state.survivors[room.owner].powers[p] ?? 0) : 0);
+
+/** Ralentissement du totem de givre (ou du pouvoir Gel, presque immobile) à cet endroit. */
 export function slowAt(state: RefugeState, x: number, y: number) {
+  for (const room of state.rooms) if (room.freeze > 0 && guards(room, x, y)) return FREEZE_SLOW;
   for (const room of state.rooms) {
     if (room.stun > 0 || room.owner === null || !state.survivors[room.owner].alive) continue;
     if (room.artifacts.some((a) => a.kind === 'frost') && guards(room, x, y)) return FROST_SLOW;
@@ -122,9 +130,16 @@ export function damageDoor(state: RefugeState, room: Room, amount: number, quiet
   state.events.push({ type: 'doorBroken', roomId: room.id });
 }
 
-export function damageZombie(state: RefugeState, z: Zombie, amount: number, room: Room | null) {
+export function damageZombie(state: RefugeState, z: Zombie, amount: number, room: Room | null, dot = false) {
   z.hp -= amount;
-  z.hitFlash = 1;
+  if (!dot) {
+    z.hitFlash = 1;
+    const toxic = heroLevel(state, room, 'toxic');
+    if (toxic) {
+      z.poison = Math.max(z.poisonTime > 0 ? z.poison : 0, (amount * HERO_TOXIC[toxic]) / TOXIC_TIME);
+      z.poisonTime = TOXIC_TIME;
+    }
+  }
   // Seuls les gros coups affichent un chiffre : trop de textes ralentissent l'affichage.
   if (amount >= 30) spawnText(state, z.x, z.y - 40, `${Math.round(amount)}`, FX_COLORS.textDamage, { size: 0.85 });
   if (z.hp > 0) return;
@@ -145,13 +160,17 @@ export function damageZombie(state: RefugeState, z: Zombie, amount: number, room
   state.events.push({ type: 'zombieKilled' });
 }
 
-export function damageDemon(state: RefugeState, d: Demon, amount: number, room: Room | null) {
+export function damageDemon(state: RefugeState, d: Demon, amount: number, room: Room | null, dot = false) {
   if (d.hp <= 0) return;
-  amount = Math.max(1, Math.round(amount * DEMON_ARMOR * HIDE_MULT[state.powers.hide ?? 0]));
+  const toxic = dot ? 0 : heroLevel(state, room, 'toxic');
+  if (toxic && room) d.poison = { dps: Math.max(d.poison.time > 0 ? d.poison.dps : 0, (amount * HERO_TOXIC[toxic]) / TOXIC_TIME), time: TOXIC_TIME, roomId: room.id };
+  const armor = DEMON_ARMOR * HIDE_MULT[state.powers.hide ?? 0];
+  // Le poison agit un peu à chaque image : pas d'arrondi (sinon 1 point minimum, 60 fois par seconde).
+  amount = dot ? amount * armor : Math.max(1, Math.round(amount * armor));
   d.hp -= amount;
   if (room) room.roundScore += amount / 40;
   // Seuls les gros coups le font clignoter (sinon le laser le laisserait tout blanc).
-  if (amount >= 15) d.hitFlash = 1;
+  if (amount >= 15 && !dot) d.hitFlash = 1;
   if (amount >= 40) spawnText(state, d.x, d.y - 90, `${amount}`, FX_COLORS.textBoss, { size: 0.9 });
   if (d.hp > 0) return;
   d.hp = 0;

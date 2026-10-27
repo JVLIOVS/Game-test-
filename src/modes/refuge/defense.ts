@@ -3,6 +3,7 @@ import { FX_COLORS } from '../../game/fxColors';
 import { DEMON_RADIUS, PAD_RADIUS, TURRET } from './balance';
 import { allDemons, damageDemon, damageDoor, damageZombie, dist, guards } from './combat';
 import { ALLY_ARCHER, GUARD, HEAL_RATE, MEGA, STORM, TESLA, WEAPON, WEAPON_STYLE } from './data';
+import { HERO_TURRET } from './heroPowers';
 import type { Demon, RefugeState, Room } from './types';
 
 // Défenses des refuges : tourelles, artefacts (méga-tourelle, bobine Tesla, givre, soin),
@@ -75,13 +76,15 @@ function updateFighters(state: RefugeState, room: Room, enemies: Target[], mult:
     owner.weaponCooldown -= dt;
     owner.shootAnim = Math.max(0, owner.shootAnim - dt * 4);
     const onThrone = dist(owner.x, owner.y, room.gen.x, room.gen.y) < PAD_RADIUS + 6;
-    if (!onThrone && owner.weaponCooldown <= 0) {
-      const target = nearest(owner, enemies, WEAPON.range);
+    // Tourelle vivante : il tire même assis sur son trône, plus vite et plus fort.
+    const living = owner.powers.turret ?? 0;
+    if ((!onThrone || living > 0) && owner.weaponCooldown <= 0) {
+      const target = nearest(owner, enemies, WEAPON.range * (living ? 1.25 : 1));
       if (target) {
-        owner.weaponCooldown = WEAPON.interval;
+        owner.weaponCooldown = WEAPON.interval / HERO_TURRET.rate[living];
         owner.shootAnim = 1;
         owner.dirX = target.x >= owner.x ? 1 : -1;
-        shoot(state, room, owner, target, WEAPON.damage[owner.weapon] * mult, WEAPON_STYLE[owner.character]);
+        shoot(state, room, owner, target, Math.max(living ? 8 : 0, WEAPON.damage[owner.weapon]) * HERO_TURRET.damage[living] * mult, WEAPON_STYLE[owner.character]);
       }
     }
   }

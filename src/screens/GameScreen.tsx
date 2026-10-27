@@ -13,6 +13,7 @@ import { createJoystick, joystickEnd, joystickMove, joystickStart, readInput } f
 import { applyDebugHash } from '../platform/debug';
 import { audio, type SfxName } from '../platform/audio';
 import { haptics } from '../platform/haptics';
+import { perf } from '../platform/perf';
 import { drawWorld } from '../render/drawWorld';
 import { Banner, type BannerData } from '../ui/Banner';
 import { GameOver } from '../ui/GameOver';
@@ -23,6 +24,8 @@ import { WeaponOffer } from '../ui/WeaponOffer';
 import { readHud, sameHud, type HudState } from '../ui/hudState';
 
 const MAX_DT = 1 / 30;
+/** Pas plus de 0,1 s rattrapé d'un coup (par exemple au retour dans l'appli). */
+const MAX_ELAPSED = 0.1;
 const BANNER_TIME = 2200;
 const FONT_FILE = require('@expo-google-fonts/fredoka/700Bold/Fredoka_700Bold.ttf');
 
@@ -262,13 +265,17 @@ export function GameScreen({ mods, onGameOver, onRetry, onMenu }: Props) {
     };
 
     const frame = (now: number) => {
-      const dt = last === 0 ? 1 / 60 : Math.min(MAX_DT, (now - last) / 1000);
+      // Si le téléphone n'affiche pas assez d'images, on fait plusieurs petits pas de jeu : la partie ne ralentit pas.
+      const elapsed = last === 0 ? 1 / 60 : Math.min(MAX_ELAPSED, (now - last) / 1000);
+      const steps = Math.ceil(elapsed / MAX_DT - 0.01);
+      const dt = elapsed / steps;
       last = now;
+      perf.frame();
       const game = gameRef.current;
 
       const input = readInput(joystick, keys);
       if (!progress.moved && (input.moveX !== 0 || input.moveY !== 0)) progress.moved = true;
-      step(game, input, dt);
+      for (let i = 0; i < steps; i++) step(game, input, dt);
 
       for (const ev of game.events) onEvent(ev, now);
       game.events.length = 0;
@@ -291,7 +298,7 @@ export function GameScreen({ mods, onGameOver, onRetry, onMenu }: Props) {
       setHint((h) => (h === nextHint ? h : nextHint));
 
       const canvas = recorder.beginRecording(bounds);
-      drawWorld(canvas, game, { width, height }, fonts, joystick);
+      perf.time('dessin', () => drawWorld(canvas, game, { width, height }, fonts, joystick));
       const pic = recorder.finishRecordingAsPicture();
       picture.value = pic;
 

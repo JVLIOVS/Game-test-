@@ -1,5 +1,6 @@
 import { PaintStyle, Skia, StrokeCap, type SkCanvas, type SkFont, type SkPaint, type SkPath } from '@shopify/react-native-skia';
 import { drawOutlinedText } from '../../render/fx';
+import { drawSprite, poseOf } from '../../render/spriteCache';
 import { PALETTE as C, fill, stroke } from '../../render/palette';
 import { AGE_THEMES, LANE, LANE_HALF } from './data';
 import type { Base, Bolt, Corpse, Crate, EpochState, Shot, Side, TurretSlot, Unit } from './types';
@@ -180,27 +181,40 @@ function drawGround(canvas: SkCanvas, state: EpochState, proj: Projection, W: nu
   const midY = mid ? Math.max(hor, mid.y) : H;
   canvas.drawRect(Skia.XYWHRect(0, hor, W, midY - hor), fill(far.side));
   canvas.drawRect(Skia.XYWHRect(0, midY, W, H - midY), fill(near.side));
-  // Le chemin, tuile par tuile, pour bien sentir la profondeur
+  // Le chemin : chaque moitié d'un seul bloc, puis une dalle sombre sur deux pour sentir la profondeur.
+  // (Peu d'opérations de dessin : c'était la partie la plus lente de l'écran sur téléphone.)
   const step = 100;
   const start = Math.max(-200, Math.floor(proj.nearZ / step) * step);
+  const lane = (z0: number, z1: number, widen: number) => {
+    const a = proj.at(z0, 0);
+    const b = proj.at(z1, 0);
+    if (!a || !b) return null;
+    const wa = (LANE_HALF + 40) * a.s + widen;
+    const wb = (LANE_HALF + 40) * b.s + widen;
+    return [Skia.Point(a.x - wa, a.y), Skia.Point(a.x + wa, a.y), Skia.Point(b.x + wb, b.y), Skia.Point(b.x - wb, b.y)];
+  };
+  const quad = (pts: ReturnType<typeof lane>, color: string) => {
+    if (!pts) return;
+    const path = Skia.Path.Make();
+    path.addPoly(pts, true);
+    canvas.drawPath(path, fill(color));
+    path.dispose?.();
+  };
+  // Bords : un liseré un peu plus large sous chaque moitié, puis la moitié elle-même par-dessus.
+  quad(lane(start, LANE / 2, 3), mix(near.lane, '#000000', 0.3));
+  quad(lane(LANE / 2, LANE + 300, 1.5), mix(far.lane, '#000000', 0.3));
+  quad(lane(start, LANE / 2, 0), near.lane);
+  quad(lane(LANE / 2, LANE + 300, 0), far.lane);
+  for (let z = start; z < LANE + 300; z += step) {
+    if ((z / step) % 2 !== 0) continue;
+    const th = z + step / 2 < LANE / 2 ? near : far;
+    quad(lane(z, Math.min(z + step, z + step / 2 < LANE / 2 ? LANE / 2 : LANE + 300), 0), mix(th.lane, '#000000', 0.08));
+  }
+  // Cailloux sur le chemin, touffes d'herbe sur les côtés (toujours aux mêmes endroits), seulement assez près pour se voir.
   for (let z = start; z < LANE + 300; z += step) {
     const a = proj.at(z, 0);
-    const b = proj.at(z + step, 0);
-    if (!a || !b) continue;
+    if (!a || a.s < 0.4) continue;
     const th = z + step / 2 < LANE / 2 ? near : far;
-    const wa = (LANE_HALF + 40) * a.s;
-    const wb = (LANE_HALF + 40) * b.s;
-    const path = Skia.Path.Make();
-    path.moveTo(a.x - wa, a.y);
-    path.lineTo(a.x + wa, a.y);
-    path.lineTo(b.x + wb, b.y);
-    path.lineTo(b.x - wb, b.y);
-    path.close();
-    canvas.drawPath(path, fill((z / step) % 2 === 0 ? th.lane : mix(th.lane, '#000000', 0.08)));
-    path.dispose?.();
-    // Bords du chemin
-    canvas.drawLine(a.x - wa, a.y, b.x - wb, b.y, line(mix(th.lane, '#000000', 0.3), Math.max(1, 4 * a.s)));
-    canvas.drawLine(a.x + wa, a.y, b.x + wb, b.y, line(mix(th.lane, '#000000', 0.3), Math.max(1, 4 * a.s)));    // Cailloux sur le chemin, touffes d'herbe sur les côtés (toujours aux mêmes endroits)
     const seed = Math.abs(Math.round(z / step)) * 9301 + 49297;
     for (let k = 0; k < 4; k++) {
       const r1 = ((seed * (k + 3)) % 233280) / 233280;
@@ -212,7 +226,13 @@ function drawGround(canvas: SkCanvas, state: EpochState, proj: Projection, W: nu
       const tuft = proj.at(pz, tuftX);
       if (tuft && tuft.y > hor) {
         const g = mix(th.side, '#FFFFFF', 0.18);
-        for (const dx of [-5, 0, 5]) canvas.drawLine(tuft.x + dx * tuft.s, tuft.y, tuft.x + dx * 1.6 * tuft.s, tuft.y - 12 * tuft.s, line(g, Math.max(1, 2.5 * tuft.s)));
+        canvas.save();
+        canvas.translate(tuft.x, tuft.y);
+        canvas.scale(tuft.s, tuft.s);
+        drawSprite(canvas, `tuft|${g}`, 0, 0, [-12, -16, 24, 18], (c) => {
+          for (const dx of [-5, 0, 5]) c.drawLine(dx, 0, dx * 1.6, -12, line(g, 2.5));
+        });
+        canvas.restore();
       }
     }
   }
@@ -224,9 +244,21 @@ function drawGround(canvas: SkCanvas, state: EpochState, proj: Projection, W: nu
 }
 
 /** Accessoires sur les côtés du chemin, selon l'époque de chaque moitié. */
+/** Accessoire du décor depuis le cache d'images (4 poses pour ce qui bouge). */
 function drawProp(canvas: SkCanvas, age: number, s: number, seed: number, time: number) {
+  const variant = age === 4 ? 0 : seed % 2;
+  const speed = age === 4 ? 2 : 1;
+  const pose = age === 0 || age === 4 ? poseOf(time * speed + seed, 4) : 0;
+  const t = (((pose + 0.5) / 4) * Math.PI * 2 - variant) / speed;
+  const res = RES_STEPS.find((r) => r >= s * 1.5 * 0.85) ?? 4;
   canvas.save();
   canvas.scale(s, s);
+  drawSprite(canvas, `p|${age}|${variant}|${pose}|${res}`, 0, 0, [-52, -112, 104, 122], (c) => drawPropShape(c, age, variant, t), { res });
+  canvas.restore();
+}
+
+function drawPropShape(canvas: SkCanvas, age: number, seed: number, time: number) {
+  canvas.save();
   const th = AGE_THEMES[age];
   if (age === 0) {
     if (seed % 2) {
@@ -687,7 +719,15 @@ function drawHeavy(canvas: SkCanvas, u: Unit, time: number) {
   }
 }
 
-function drawUnit(canvas: SkCanvas, u: Unit, rage: boolean, healing: boolean, time: number) {
+const SOLDIER_BOX = [-62, -118, 124, 134] as const;
+const HEAVY_BOX = [-92, -165, 184, 190] as const;
+const RES_STEPS = [1, 1.5, 2, 3, 4];
+
+/**
+ * Troupe : dessinée depuis le cache d'images (une image par pose de marche, de coup et de clignotement),
+ * à une résolution adaptée à sa taille à l'écran. `px` : pixels d'écran par unité du dessin.
+ */
+function drawUnit(canvas: SkCanvas, u: Unit, rage: boolean, healing: boolean, time: number, px: number) {
   const big = u.kind === 'heavy';
   canvas.drawOval(Skia.XYWHRect(big ? -40 : -18, -7, big ? 80 : 36, 14), fill('rgba(0,0,0,0.28)'));
   if (rage) canvas.drawOval(Skia.XYWHRect(big ? -46 : -24, -10, big ? 92 : 48, 20), stroke(rgba('255,90,60', 0.6 + Math.sin(time * 12) * 0.3), 3));
@@ -696,8 +736,14 @@ function drawUnit(canvas: SkCanvas, u: Unit, rage: boolean, healing: boolean, ti
   if (u.aimX < -0.35) canvas.scale(-1, 1);
   // Élan vers la cible au moment du coup
   canvas.translate(Math.abs(u.aimX) * u.attack * 8, 0);
-  if (big) drawHeavy(canvas, u, time);
-  else drawSoldier(canvas, u, time);
+  const walk = poseOf(u.walk * 10);
+  const attack = Math.round(u.attack * 3);
+  const flash = u.flash > 0.5 ? 1 : 0;
+  const tick = poseOf(time * 6, 4);
+  const res = RES_STEPS.find((r) => r >= px * 0.85) ?? 4;
+  const pose = { ...u, id: 0, walk: ((walk + 0.5) / 8) * ((Math.PI * 2) / 10), attack: attack / 3, flash };
+  const t = ((tick + 0.5) / 4) * ((Math.PI * 2) / 6);
+  drawSprite(canvas, `e|${u.kind}|${u.age}|${u.side}|${walk}|${attack}|${flash}|${tick}|${res}`, 0, 0, big ? HEAVY_BOX : SOLDIER_BOX, (c) => (big ? drawHeavy(c, pose, t) : drawSoldier(c, pose, t)), { res });
 }
 
 // ---------- Projectiles, frappes, caisses ----------
@@ -781,7 +827,7 @@ function drawBolt(canvas: SkCanvas, proj: Projection, bo: Bolt) {
  * 0 assommé (il tourne sur lui-même avec des étoiles), 1 tranché (une croix blanche, puis il tombe),
  * 2 enfumé (nuage de poudre), 3 soufflé (projeté en l'air dans une explosion), 4 désintégré (en pixels).
  */
-function drawCorpse(canvas: SkCanvas, cp: Corpse, time: number) {
+function drawCorpse(canvas: SkCanvas, cp: Corpse, time: number, px: number) {
   const t = cp.t;
   const u = { ...cp.unit, attack: 0 };
   const dir = cp.unit.side === 0 ? -1 : 1;
@@ -799,7 +845,7 @@ function drawCorpse(canvas: SkCanvas, cp: Corpse, time: number) {
     canvas.saveLayer(layerAlphaPaint(alpha));
     canvas.translate(dir * t * 60, -up);
     canvas.rotate(dir * t * 540, 0, -40);
-    drawUnit(canvas, { ...u, flash: Math.max(0, 1 - t * 3) }, false, false, time);
+    drawUnit(canvas, { ...u, flash: Math.max(0, 1 - t * 3) }, false, false, time, px);
     canvas.restore();
     return;
   }
@@ -808,7 +854,7 @@ function drawCorpse(canvas: SkCanvas, cp: Corpse, time: number) {
     const k = Math.min(1, t / 0.5);
     if (k < 1) {
       canvas.saveLayer(layerAlphaPaint(1 - k));
-      drawUnit(canvas, { ...u, flash: 1 }, false, false, time);
+      drawUnit(canvas, { ...u, flash: 1 }, false, false, time, px);
       canvas.restore();
     }
     for (let i = 0; i < 14; i++) {
@@ -830,7 +876,7 @@ function drawCorpse(canvas: SkCanvas, cp: Corpse, time: number) {
   } else {
     canvas.rotate(dir * fall * 85, 0, 0);
   }
-  drawUnit(canvas, { ...u, flash: 1 - fall }, false, false, time);
+  drawUnit(canvas, { ...u, flash: 1 - fall }, false, false, time, px);
   canvas.restore();
   if (style === 0) {
     // Étoiles qui tournent au-dessus de la tête
@@ -984,7 +1030,7 @@ export function drawEpoch(canvas: SkCanvas, state: EpochState, view: EpochView, 
         canvas.scale(us, us);
         // Élan vers l'avant ou l'arrière, selon où est la cible
         canvas.translate(0, -u.aimZ * u.attack * 5 * p.s);
-        drawUnit(canvas, u, state.bases[u.side].rage > 0, state.bases[u.side].healing > 0, state.time);
+        drawUnit(canvas, u, state.bases[u.side].rage > 0, state.bases[u.side].healing > 0, state.time, us * 1.5);
         canvas.restore();
         if (u.hp < u.maxHp) {
           const w = 30 * p.s;
@@ -1006,7 +1052,7 @@ export function drawEpoch(canvas: SkCanvas, state: EpochState, view: EpochView, 
         canvas.translate(p.x, p.y);
         const k = p.s * (cp.unit.kind === 'heavy' ? 1.15 : 1) * (1 + cp.unit.age * 0.06);
         canvas.scale(k, k);
-        drawCorpse(canvas, cp, state.time);
+        drawCorpse(canvas, cp, state.time, k * 1.5);
         canvas.restore();
       },
     });

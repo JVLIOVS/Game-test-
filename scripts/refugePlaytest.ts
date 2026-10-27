@@ -3,6 +3,7 @@
 //          ROLE=demon npx tsx scripts/refugePlaytest.ts 5   (rôle Démon, piloté par l'ordinateur)
 import { botThink } from '../src/modes/refuge/ai';
 import { CHARACTER_IDS } from '../src/modes/refuge/data';
+import { chooseHeroPower } from '../src/modes/refuge/heroPowers';
 import { createRefuge, stepRefuge } from '../src/modes/refuge/sim';
 import type { CharacterId } from '../src/modes/refuge/types';
 
@@ -30,6 +31,8 @@ for (let r = 0; r < runs; r++) {
       log.push(`${state.time.toFixed(0).padStart(4)}s roue manche ${state.wheel.round} : ${state.wheel.prize}${state.wheel.artifact ? ` (${state.wheel.artifact})` : ''} chance ${(state.wheel.luck * 100).toFixed(0)} %`);
       state.wheel = null;
     }
+    // Pouvoir de survivant proposé au joueur : il prend le premier.
+    if (state.heroChoice) chooseHeroPower(state, player, state.heroChoice[0]);
     steps++;
     for (const ev of state.events) {
       const time = `${state.time.toFixed(0).padStart(4)}s`;

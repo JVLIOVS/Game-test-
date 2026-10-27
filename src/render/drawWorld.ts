@@ -11,6 +11,7 @@ import type { JoystickState } from '../input/joystick';
 import { worldDef } from '../game/data/worlds';
 import { drawFloatingTexts, drawOutlinedText, drawParticles, drawProjectile } from './fx';
 import { PALETTE as C, THEME, fill, setTheme, stroke } from './palette';
+import { drawSprite } from './spriteCache';
 import {
   drawAnimal,
   drawLodge,
@@ -251,6 +252,70 @@ function drawOffscreenArrow(canvas: SkCanvas, sx: number, sy: number, view: View
   canvas.restore();
 }
 
+/** Taille d'une dalle du sol (unités du jeu) et sa résolution : l'herbe peut être un peu moins fine. */
+const GROUND_TILE = 290;
+const GROUND_RES = 1.2;
+const groundIds = new WeakMap<object, number>();
+let nextGround = 1;
+/** Chaque partie a son propre décor : un numéro pour ses dalles dans le cache. */
+function groundId(state: GameState) {
+  let id = groundIds.get(state.decor);
+  if (!id) {
+    id = nextGround++;
+    groundIds.set(state.decor, id);
+  }
+  return `${id}|${state.world}`;
+}
+
+/** Tout le sol de la carte (dessiné une fois par dalle). */
+function drawGround(canvas: SkCanvas, state: GameState) {
+  const { map, base } = state;
+  const G = THEME().ground;
+  // Sol
+  canvas.drawRRect(Skia.RRectXY(Skia.XYWHRect(-12, -12, map.width + 24, map.height + 24), 40, 40), fill(G.grassDark));
+  canvas.drawRRect(Skia.RRectXY(Skia.XYWHRect(0, 0, map.width, map.height), 34, 34), fill(G.grass));
+  for (const d of state.decor) {
+    const s = d.size;
+    switch (d.kind) {
+      case 'patch':
+        canvas.drawOval(Skia.XYWHRect(d.x - 60 * s, d.y - 30 * s, 120 * s, 60 * s), fill(d.variant % 2 ? G.grassLight : G.grassDark));
+        break;
+      case 'tuft':
+        canvas.drawOval(Skia.XYWHRect(d.x - 6 * s, d.y - 9 * s, 4 * s, 10 * s), fill(G.tuft));
+        canvas.drawOval(Skia.XYWHRect(d.x - 2 * s, d.y - 12 * s, 4 * s, 13 * s), fill(G.tuft));
+        canvas.drawOval(Skia.XYWHRect(d.x + 2 * s, d.y - 9 * s, 4 * s, 10 * s), fill(G.tuft));
+        break;
+      case 'flower':
+        canvas.drawCircle(d.x, d.y, 4.5 * s, fill(C.flowers[d.variant % C.flowers.length]));
+        canvas.drawCircle(d.x, d.y, 1.8 * s, fill('#FFB627'));
+        break;
+      case 'pebble':
+        canvas.drawOval(Skia.XYWHRect(d.x - 6 * s, d.y - 4 * s, 12 * s, 8 * s), fill(C.pebble));
+        break;
+    }
+  }
+  // Terre battue du camp
+  {
+    canvas.drawCircle(base.x, base.y, CAMP_RADIUS + 8, fill(G.dirtDark));
+    canvas.drawCircle(base.x, base.y, CAMP_RADIUS, fill(G.dirt));
+  }
+
+  // Bordure de buissons sombres autour de la carte
+  for (let x = 0; x <= map.width; x += BORDER_SPACING) {
+    {
+      canvas.drawCircle(x, -18 + ((x / BORDER_SPACING) % 2) * 8, 38, fill(G.void));
+      canvas.drawCircle(x, map.height + 18 - ((x / BORDER_SPACING) % 2) * 8, 38, fill(G.void));
+    }
+  }
+  for (let y = 0; y <= map.height; y += BORDER_SPACING) {
+    {
+      canvas.drawCircle(-18 + ((y / BORDER_SPACING) % 2) * 8, y, 38, fill(G.void));
+      canvas.drawCircle(map.width + 18 - ((y / BORDER_SPACING) % 2) * 8, y, 38, fill(G.void));
+    }
+  }
+
+}
+
 export function drawWorld(
   canvas: SkCanvas,
   state: GameState,
@@ -284,47 +349,19 @@ export function drawWorld(
   canvas.scale(scale, scale);
   canvas.translate(-camX, -camY);
 
-  // Sol
-  canvas.drawRRect(Skia.RRectXY(Skia.XYWHRect(-12, -12, map.width + 24, map.height + 24), 40, 40), fill(G.grassDark));
-  canvas.drawRRect(Skia.RRectXY(Skia.XYWHRect(0, 0, map.width, map.height), 34, 34), fill(G.grass));
-  for (const d of state.decor) {
-    if (!visible(d.x, d.y)) continue;
-    const s = d.size;
-    switch (d.kind) {
-      case 'patch':
-        canvas.drawOval(Skia.XYWHRect(d.x - 60 * s, d.y - 30 * s, 120 * s, 60 * s), fill(d.variant % 2 ? G.grassLight : G.grassDark));
-        break;
-      case 'tuft':
-        canvas.drawOval(Skia.XYWHRect(d.x - 6 * s, d.y - 9 * s, 4 * s, 10 * s), fill(G.tuft));
-        canvas.drawOval(Skia.XYWHRect(d.x - 2 * s, d.y - 12 * s, 4 * s, 13 * s), fill(G.tuft));
-        canvas.drawOval(Skia.XYWHRect(d.x + 2 * s, d.y - 9 * s, 4 * s, 10 * s), fill(G.tuft));
-        break;
-      case 'flower':
-        canvas.drawCircle(d.x, d.y, 4.5 * s, fill(C.flowers[d.variant % C.flowers.length]));
-        canvas.drawCircle(d.x, d.y, 1.8 * s, fill('#FFB627'));
-        break;
-      case 'pebble':
-        canvas.drawOval(Skia.XYWHRect(d.x - 6 * s, d.y - 4 * s, 12 * s, 8 * s), fill(C.pebble));
-        break;
-    }
-  }
-  // Terre battue du camp
-  if (visible(base.x, base.y) || Math.abs(base.x - camX) < halfW + CAMP_RADIUS) {
-    canvas.drawCircle(base.x, base.y, CAMP_RADIUS + 8, fill(G.dirtDark));
-    canvas.drawCircle(base.x, base.y, CAMP_RADIUS, fill(G.dirt));
-  }
-
-  // Bordure de buissons sombres autour de la carte
-  for (let x = 0; x <= map.width; x += BORDER_SPACING) {
-    if (x > left && x < right) {
-      if (top < 0) canvas.drawCircle(x, -18 + ((x / BORDER_SPACING) % 2) * 8, 38, fill(G.void));
-      if (bottom > map.height) canvas.drawCircle(x, map.height + 18 - ((x / BORDER_SPACING) % 2) * 8, 38, fill(G.void));
-    }
-  }
-  for (let y = 0; y <= map.height; y += BORDER_SPACING) {
-    if (y > top && y < bottom) {
-      if (left < 0) canvas.drawCircle(-18 + ((y / BORDER_SPACING) % 2) * 8, y, 38, fill(G.void));
-      if (right > map.width) canvas.drawCircle(map.width + 18 - ((y / BORDER_SPACING) % 2) * 8, y, 38, fill(G.void));
+  // Sol, herbe, fleurs, terre du camp et buissons du bord : rien de tout ça ne bouge pendant la partie.
+  // C'est dessiné une seule fois, par grandes dalles d'images, puis recopié (des centaines de petits dessins en moins).
+  // Les dalles se chevauchent un peu pour qu'aucun raccord ne se voie.
+  const gid = groundId(state);
+  const tx0 = Math.floor(left / GROUND_TILE);
+  const ty0 = Math.floor(top / GROUND_TILE);
+  for (let tx = tx0; tx * GROUND_TILE < right; tx++) {
+    for (let ty = ty0; ty * GROUND_TILE < bottom; ty++) {
+      if ((tx + 1) * GROUND_TILE < -80 || (ty + 1) * GROUND_TILE < -80 || tx * GROUND_TILE > map.width + 80 || ty * GROUND_TILE > map.height + 80) continue;
+      drawSprite(canvas, `g|${gid}|${tx}|${ty}`, tx * GROUND_TILE, ty * GROUND_TILE, [-3, -3, GROUND_TILE + 6, GROUND_TILE + 6], (c) => {
+        c.translate(-tx * GROUND_TILE, -ty * GROUND_TILE);
+        drawGround(c, state);
+      }, { res: GROUND_RES });
     }
   }
 

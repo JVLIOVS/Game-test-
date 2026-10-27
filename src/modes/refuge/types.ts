@@ -31,6 +31,9 @@ export type ArtifactKind = 'mega' | 'tesla' | 'frost' | 'heal';
 export type WheelPrize = 'gold' | 'repair' | 'ally' | 'storm' | 'weapon' | 'shield' | 'artifact' | 'mega';
 
 /** Pouvoirs du Démon : passifs, ou actifs (bouton). */
+/** Pouvoirs des survivants, choisis au fil de la partie (comme ceux du Démon). */
+export type HeroPower = 'regen' | 'toxic' | 'turret' | 'fortune' | 'freeze' | 'blast';
+
 export type DemonPower = 'toxic' | 'regen' | 'brute' | 'hide' | 'clone' | 'roar' | 'dash';
 
 export type RefugeRole = 'survivor' | 'demon';
@@ -113,6 +116,8 @@ export interface Room {
   shieldMax: number;
   /** Défenses assourdies par le rugissement du Démon (secondes restantes). */
   stun: number;
+  /** Pouvoir Gel : les ennemis devant la porte sont figés. */
+  freeze: number;
   /** Poison des griffes toxiques : dégâts par seconde et durée restante. */
   poison: { dps: number; time: number };
   /** Performance pendant la manche (donne de la chance à la roue). */
@@ -146,6 +151,9 @@ export interface Survivor {
   /** Arme personnelle : quand tu quittes ton trône, tu tires toi-même sur ce qui approche. */
   weapon: number;
   weaponCooldown: number;
+  /** Pouvoirs choisis (niveau 1 à 3) et recharge des pouvoirs à déclencher. */
+  powers: Partial<Record<HeroPower, number>>;
+  powerCooldowns: Partial<Record<HeroPower, number>>;
   /** Animation du tir. */
   shootAnim: number;
   /** Case vide sous les pieds (le joueur peut y construire). */
@@ -185,6 +193,8 @@ export interface Demon {
   rise: number;
   /** Double temporaire (pouvoir Dédoublement) : temps restant, sinon 0. */
   cloneTime: number;
+  /** Poison des tirs toxiques d'un survivant. */
+  poison: { dps: number; time: number; roomId: number };
   /** Ruée en cours (secondes restantes) et direction. */
   dashTime: number;
   dashX: number;
@@ -224,6 +234,8 @@ export type RefugeEvent =
   | { type: 'demonPower'; power: DemonPower; level: number }
   | { type: 'demonActive'; power: DemonPower }
   | { type: 'zombieKilled' }
+  | { type: 'heroPower'; survivorId: number; power: HeroPower; level: number }
+  | { type: 'heroActive'; roomId: number; power: HeroPower }
   | { type: 'fire'; roomId: number; kind: 'arrow' | 'cannon' | 'laser' | 'zap' }
   | { type: 'over'; won: boolean };
 
@@ -242,6 +254,11 @@ export interface RefugeState {
   wheel: WheelSpin | null;
   /** Choix de pouvoir du Démon en attente (rôle Démon) : la partie est en pause. */
   powerChoice: DemonPower[] | null;
+  /** Choix d'un pouvoir de survivant proposé au joueur, et temps avant le prochain. */
+  heroChoice: HeroPower[] | null;
+  heroTimer: number;
+  /** Ondes de choc en cours (dessin). */
+  blasts: { x: number; y: number; t: number }[];
   /** Pouvoirs du Démon (niveau de chacun) et recharge des pouvoirs actifs. */
   powers: Partial<Record<DemonPower, number>>;
   powerCooldowns: Partial<Record<DemonPower, number>>;
