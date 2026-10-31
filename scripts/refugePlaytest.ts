@@ -1,7 +1,6 @@
 // Fait jouer des parties du mode Refuges entre robots (le joueur est aussi un robot).
 // Lancer : npx tsx scripts/refugePlaytest.ts 5        (rôle survivant)
 //          ROLE=demon npx tsx scripts/refugePlaytest.ts 5   (rôle Démon, piloté par l'ordinateur)
-import { botThink } from '../src/modes/refuge/ai';
 import { CHARACTER_IDS } from '../src/modes/refuge/data';
 import { chooseHeroPower } from '../src/modes/refuge/heroPowers';
 import { createRefuge, stepRefuge } from '../src/modes/refuge/sim';
@@ -15,16 +14,14 @@ for (let r = 0; r < runs; r++) {
   const character = (process.env.CHAR as CharacterId) ?? CHARACTER_IDS[r % CHARACTER_IDS.length];
   const state = createRefuge({ role, character, demonAI: true });
   const player = state.survivors[0];
+  // Le joueur touche l'écran pour acheter : ici, il est simplement joué comme les robots.
+  player.isPlayer = false;
   const log: string[] = [];
   const t0 = performance.now();
   let steps = 0;
   while (state.phase !== 'over' && state.time < 700) {
     // Le joueur suit la même logique que les robots.
-    if (state.role === 'survivor') botThink(state, player, DT);
-    const g = player.goal;
-    const d = g ? Math.hypot(g.x - player.x, g.y - player.y) : 0;
-    const input = state.role === 'survivor' && g && d > 6 ? { moveX: (g.x - player.x) / d, moveY: (g.y - player.y) / d } : { moveX: 0, moveY: 0 };
-    stepRefuge(state, input, DT);
+    stepRefuge(state, { moveX: 0, moveY: 0 }, DT);
     // La roue du joueur s'affiche en vrai ; ici on la referme tout de suite.
     if (state.wheel) {
       stats.prizes[state.wheel.prize] = (stats.prizes[state.wheel.prize] ?? 0) + 1;

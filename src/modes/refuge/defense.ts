@@ -78,7 +78,8 @@ function updateFighters(state: RefugeState, room: Room, enemies: Target[], mult:
     const onThrone = dist(owner.x, owner.y, room.gen.x, room.gen.y) < PAD_RADIUS + 6;
     // Tourelle vivante : il tire même assis sur son trône, plus vite et plus fort.
     const living = owner.powers.turret ?? 0;
-    if ((!onThrone || living > 0) && owner.weaponCooldown <= 0) {
+    // Le joueur reste sur son trône : il tire de là.
+    if ((!onThrone || living > 0 || owner.isPlayer) && owner.weaponCooldown <= 0) {
       const target = nearest(owner, enemies, WEAPON.range * (living ? 1.25 : 1));
       if (target) {
         owner.weaponCooldown = WEAPON.interval / HERO_TURRET.rate[living];

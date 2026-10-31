@@ -38,7 +38,8 @@ export const WHEEL: { prize: WheelPrize; icon: string; color: string; rarity: 0 
 export const wheelWeight = (rarity: 0 | 1 | 2, luck: number) => (rarity === 0 ? 3 * (1 - luck * 0.6) : rarity === 1 ? 2 * (1 + luck) : 0.8 * (1 + luck * 3.5));
 
 /** Arme personnelle : dégâts et prix par niveau (le niveau 1 est offert). */
-export const WEAPON = { damage: [0, 10, 22, 46, 95], cost: [0, 0, 90, 260, 650], interval: 0.6, range: 330 };
+/** Arme du survivant : moins de tirs mais plus forts (moins de projectiles à l'écran, même puissance). */
+export const WEAPON = { damage: [0, 17, 37, 77, 160], cost: [0, 0, 90, 260, 650], interval: 1, range: 330 };
 /** Allure du tir de chaque personnage. */
 export const WEAPON_STYLE: Record<CharacterId, 'bolt' | 'tower' | 'magic'> = { mecano: 'bolt', gardien: 'tower', veinard: 'magic' };
 

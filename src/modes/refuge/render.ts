@@ -583,12 +583,21 @@ function drawPad(canvas: SkCanvas, room: Room, pad: RefugePad, gold: number, fon
   }
 }
 
-/** Sous chacune de tes tourelles : le prix de l'amélioration (rester dessus pour l'acheter). */
+/** Petite flèche verte qui saute : « touche-moi, tu peux m'améliorer ». */
+function drawUpBadge(canvas: SkCanvas, x: number, y: number, time: number) {
+  const hop = Math.abs(Math.sin(time * 5)) * 5;
+  drawSprite(canvas, 'upBadge', x, y - hop, [-14, -14, 28, 28], (c) => {
+    c.drawCircle(0, 0, 13, fill(C.outline));
+    c.drawCircle(0, 0, 10.5, fill('#7BD35A'));
+    c.drawPath(cached('upArrow', (b) => b.moveTo(0, -7).lineTo(7, 1).lineTo(2.5, 1).lineTo(2.5, 7).lineTo(-2.5, 7).lineTo(-2.5, 1).lineTo(-7, 1).close()), fill(C.white));
+  });
+}
+
+/** Sous chacune de tes tourelles : le prix de l'amélioration (la toucher pour l'acheter). */
 function drawTurretUpgrade(canvas: SkCanvas, room: Room, t: RefugeTurret, gold: number, font: SkFont | null) {
   const offer = turretOffer(room, t);
   const can = offer !== null && gold >= offer.cost;
   if (can) canvas.drawCircle(t.x, t.y, PAD_RADIUS + 2, stroke('#FFD25A', 3));
-  if (t.hold > 0) canvas.drawArc(Skia.XYWHRect(t.x - PAD_RADIUS, t.y - PAD_RADIUS, PAD_RADIUS * 2, PAD_RADIUS * 2), -90, Math.min(1, t.hold / 0.35) * 360, false, stroke('#FFFFFF', 5));
   if (font) drawOutlinedText(canvas, offer ? `${offer.cost}` : 'MAX', t.x, t.y + 34, font, offer === null ? C.white : can ? COLORS.coin : '#C9C2D8');
 }
 
@@ -860,13 +869,20 @@ function drawBang(canvas: SkCanvas, x: number, y: number, k: number) {
   canvas.drawCircle(x, y + 10 * k, 4 * k, fill('#FFD25A'));
 }
 
+/** Point de l'arène sous le doigt, d'après la dernière image dessinée. */
+export function screenToArena(view: Pick<RefugeView, 'width' | 'height' | 'cam'>, sx: number, sy: number) {
+  const { cam } = view;
+  const scale = cam.scale ?? cam.zoom;
+  return { x: (cam.screenX ?? cam.x) + (sx - view.width / 2) / scale, y: (cam.screenY ?? cam.y) + (sy - view.height / 2) / scale };
+}
+
 export interface RefugeView {
   width: number;
   height: number;
   /** Hauteur occupée par l'interface en haut : la caméra centre le jeu en dessous. */
   top: number;
   /** Caméra lissée (position et zoom), conservée d'une image à l'autre. */
-  cam: { x: number; y: number; zoom: number; ready: boolean };
+  cam: { x: number; y: number; zoom: number; ready: boolean; screenX?: number; screenY?: number; scale?: number };
   /** Vue d'ensemble (bouton œil) : toute l'arène d'un coup d'œil. */
   overview: boolean;
 }
@@ -898,7 +914,9 @@ function cameraFocus(state: RefugeState) {
 export function drawRefuge(canvas: SkCanvas, state: RefugeState, view: RefugeView, fonts: { big: SkFont | null; small: SkFont | null }, joystick: JoystickState, dt: number) {
   const player = playerSurvivor(state);
   const mine = (room: Room) => player !== null && room.owner === player.id;
-  const overview = view.overview && state.phase !== 'arrival';
+  // Vue d'ensemble : bouton œil, ou pendant que tu choisis ton refuge (il suffit d'en toucher un).
+  const choosing = player !== null && player.alive && player.roomId === null && state.phase === 'choose';
+  const overview = (view.overview || choosing) && state.phase !== 'arrival';
   // Vue d'ensemble : toute l'arène tient dans l'espace sous l'interface.
   const overviewScale = Math.min(view.width / (ARENA_W + 60), (view.height - view.top - 40) / (ARENA_H + 60));
   const focus = overview ? { x: ARENA_W / 2, y: ARENA_H / 2 } : cameraFocus(state);
@@ -923,6 +941,10 @@ export function drawRefuge(canvas: SkCanvas, state: RefugeState, view: RefugeVie
   const zoomedOut = scale < scaleFor(view.width) * 0.8;
   const camX = (zoomedOut ? cam.x : Math.min(state.width - halfW + 60, Math.max(halfW - 60, cam.x))) + (Math.random() * 2 - 1) * shake;
   const camY = (zoomedOut ? cam.y - offsetY : Math.min(state.height - halfH + 60 + offsetY, Math.max(halfH - 60 - offsetY, cam.y - offsetY))) + (Math.random() * 2 - 1) * shake;
+  // Dernière transformation, pour savoir ce que le joueur touche (voir screenToArena).
+  cam.screenX = camX;
+  cam.screenY = camY;
+  cam.scale = scale;
   /** Position à l'écran d'un point de l'arène. */
   const toScreen = (x: number, y: number) => ({ x: view.width / 2 + (x - camX) * scale, y: view.height / 2 + (y - camY) * scale });
   const margin = 160;
@@ -1002,6 +1024,27 @@ export function drawRefuge(canvas: SkCanvas, state: RefugeState, view: RefugeVie
   }
   drawables.sort((a, b) => a.y - b.y);
   for (const dr of drawables) dr.draw();
+  // Ce que tu peux améliorer tout de suite : une flèche verte dessus (il suffit de toucher).
+  if (player && myRoom && player.alive && state.phase === 'siege') {
+    for (const pad of myRoom.pads) {
+      const offer = padOffer(myRoom, pad);
+      if (offer && player.gold >= offer.cost) drawUpBadge(canvas, pad.x + PAD_RADIUS * 0.75, pad.y - PAD_RADIUS * 0.85, state.time);
+    }
+    for (const t of myRoom.turrets) {
+      const offer = turretOffer(myRoom, t);
+      if (t.level > 0 && offer && player.gold >= offer.cost) drawUpBadge(canvas, t.x + 18, t.y - 40, state.time);
+    }
+  }
+  // Choix du refuge : les refuges libres clignotent, il suffit d'en toucher un.
+  if (player && player.roomId === null && state.phase === 'choose') {
+    for (const room of state.rooms) {
+      if (room.owner !== null) continue;
+      const r = room.inner;
+      const k = 0.75 + Math.sin(state.time * 6) * 0.25;
+      canvas.drawRect(Skia.XYWHRect(r.x, r.y, r.w, r.h), fill(rgba('255,210,90', 0.3 * k)));
+      canvas.drawRect(Skia.XYWHRect(r.x - 8, r.y - 8, r.w + 16, r.h + 16), stroke(rgba('255,210,90', k), 16));
+    }
+  }
   if (state.finale) drawCrown(canvas, state);
 
   // Lasers

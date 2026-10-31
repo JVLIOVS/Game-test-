@@ -9,8 +9,8 @@ import { createJoystick, joystickEnd, joystickMove, joystickStart, readInput } f
 import { ROUNDS, SIEGE_TIME, refugeSouls } from '../modes/refuge/balance';
 import { ACTIVE_POWERS, ARTIFACTS, CHARACTERS, DEMON_POWERS } from '../modes/refuge/data';
 import { chooseDemonPower, graceLeft, useDemonPower } from '../modes/refuge/demon';
-import { drawRefuge } from '../modes/refuge/render';
-import { FINALE_TIME, buildTurret, createRefuge, newTurretCost, placeArtifact, playerSurvivor, stepRefuge, type RefugeSetup } from '../modes/refuge/sim';
+import { drawRefuge, screenToArena } from '../modes/refuge/render';
+import { FINALE_TIME, playerTap, buildTurret, createRefuge, newTurretCost, placeArtifact, playerSurvivor, stepRefuge, type RefugeSetup } from '../modes/refuge/sim';
 import type { ArtifactKind, DemonPower, HeroPower, RefugeEvent, RefugeState } from '../modes/refuge/types';
 import { applyRefugeDebugHash } from '../platform/debug';
 import { audio } from '../platform/audio';
@@ -427,9 +427,32 @@ export function RefugeScreen({ setup, onFinish, onRetry, onMenu }: Props) {
     else haptics.error();
   }, []);
 
-  const onStart = (e: GestureResponderEvent) => joystickStart(joystick, e.nativeEvent.pageX, e.nativeEvent.pageY);
-  const onMove = (e: GestureResponderEvent) => joystickMove(joystick, e.nativeEvent.pageX, e.nativeEvent.pageY);
-  const onEnd = () => joystickEnd(joystick);
+  // Survivant : on ne se déplace plus au doigt, on touche (un refuge pour y aller, puis cases, tourelles, boutons).
+  // Démon : le joystick reste.
+  const onStart = (e: GestureResponderEvent) => {
+    if (demonRole) joystickStart(joystick, e.nativeEvent.pageX, e.nativeEvent.pageY);
+  };
+  const onMove = (e: GestureResponderEvent) => {
+    if (demonRole) joystickMove(joystick, e.nativeEvent.pageX, e.nativeEvent.pageY);
+  };
+  const onEnd = (e: GestureResponderEvent) => {
+    if (demonRole) {
+      joystickEnd(joystick);
+      return;
+    }
+    if (overviewRef.current) return;
+    const st = stateRef.current;
+    const at = screenToArena({ width, height, cam: camera }, e.nativeEvent.pageX, e.nativeEvent.pageY);
+    const r = playerTap(st, at.x, at.y);
+    if (r === 'bought') haptics.success();
+    else if (r === 'poor') {
+      haptics.error();
+      audio.sfx('error');
+    } else if (r === 'go' || r === 'cell') {
+      haptics.light();
+      audio.sfx('tap');
+    }
+  };
 
   const s = stateRef.current;
   const inSiege = hud.phase === 'siege' || hud.phase === 'over';
@@ -476,7 +499,7 @@ export function RefugeScreen({ setup, onFinish, onRetry, onMenu }: Props) {
       onResponderGrant={onStart}
       onResponderMove={onMove}
       onResponderRelease={onEnd}
-      onResponderTerminate={onEnd}
+      onResponderTerminate={() => joystickEnd(joystick)}
     >
       <View pointerEvents="none" style={StyleSheet.absoluteFill}>
         <Canvas style={StyleSheet.absoluteFill}>

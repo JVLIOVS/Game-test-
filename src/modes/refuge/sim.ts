@@ -163,7 +163,7 @@ export function padOffer(room: Room, pad: RefugePad): { cost: number; level: num
 
 function buy(state: RefugeState, s: Survivor, room: Room, pad: RefugePad) {
   const offer = padOffer(room, pad);
-  if (!offer || s.gold < offer.cost) return;
+  if (!offer || s.gold < offer.cost) return false;
   s.gold -= offer.cost;
   if (pad.kind === 'door') {
     const before = room.door.maxHp;
@@ -181,6 +181,7 @@ function buy(state: RefugeState, s: Survivor, room: Room, pad: RefugePad) {
   }
   spawnBurst(state, pad.x, pad.y, 20, 14, 'confetti', FX_COLORS.confetti, 1);
   state.events.push({ type: 'bought', survivorId: s.id, kind: pad.kind, level: offer.level });
+  return true;
 }
 
 /** Amélioration d'une tourelle posée : coût, ou null au niveau maximum. */
@@ -195,11 +196,12 @@ export function newTurretCost(room: Room): number | null {
 
 function upgradeTurret(state: RefugeState, s: Survivor, room: Room, t: RefugeTurret) {
   const offer = turretOffer(room, t);
-  if (!offer || s.gold < offer.cost) return;
+  if (!offer || s.gold < offer.cost) return false;
   s.gold -= offer.cost;
   t.level = offer.level;
   spawnBurst(state, t.x, t.y, 20, 14, 'confetti', FX_COLORS.confetti, 1);
   state.events.push({ type: 'bought', survivorId: s.id, kind: 'turret', level: t.level });
+  return true;
 }
 
 /** Construire une tourelle sur une case libre de son refuge. */
@@ -287,6 +289,33 @@ function updateSurvivors(state: RefugeState, input: PlayerInput, dt: number) {
     if (s.isPlayer) {
       mx = input.moveX;
       my = input.moveY;
+      // Sans doigt sur l'écran : le joueur va tout seul là où il a touché (un refuge), puis sur son trône.
+      if (mx === 0 && my === 0) {
+        // Le refuge visé a été pris juste avant : il file vers le refuge libre le plus proche.
+        const end = s.path[s.path.length - 1];
+        if (s.roomId === null && end) {
+          const aimed = state.rooms.find((r) => roomCenter(r).x === end.x && roomCenter(r).y === end.y);
+          if (aimed && aimed.owner !== null) {
+            const free = state.rooms
+              .filter((r) => r.owner === null)
+              .sort((a, b) => dist(s.x, s.y, roomCenter(a).x, roomCenter(a).y) - dist(s.x, s.y, roomCenter(b).x, roomCenter(b).y))[0];
+            s.path = free ? [doorOutside(free, 50), roomCenter(free)] : [];
+          }
+        }
+        if (s.roomId !== null && !s.path.length) {
+          const g = state.rooms[s.roomId].gen;
+          if (dist(s.x, s.y, g.x, g.y) > 4) s.path = [{ x: g.x, y: g.y }];
+        }
+        const next = s.path[0];
+        if (next) {
+          const d = dist(s.x, s.y, next.x, next.y);
+          if (d < 10) s.path.shift();
+          else {
+            mx = (next.x - s.x) / d;
+            my = (next.y - s.y) / d;
+          }
+        }
+      } else s.path = [];
     } else {
       botThink(state, s, dt);
       if (s.goal) {
@@ -305,6 +334,11 @@ function updateSurvivors(state: RefugeState, input: PlayerInput, dt: number) {
     s.gold += GEN_INCOME[room.gen.level] * (onGen ? 1 : OFF_GEN_RATIO) * (room.boosts.turbo > 0 ? 2 : 1) * HERO_FORTUNE[s.powers.fortune ?? 0] * dt;
     // Banquiers : de l'or en plus, même loin du trône.
     for (const a of room.allies) if (a.kind === 'banker') s.gold += BANKER_GOLD * a.power * dt;
+    if (s.isPlayer) {
+      // Le joueur achète en touchant (voir playerTap) : rien ne s'achète en marchant dessus.
+      if (s.buildCell !== null && cellTaken(room, s.buildCell)) s.buildCell = null;
+      continue;
+    }
     for (const pad of room.pads) {
       if (dist(s.x, s.y, pad.x, pad.y) < PAD_RADIUS) {
         pad.hold += dt;
@@ -332,6 +366,34 @@ function updateSurvivors(state: RefugeState, input: PlayerInput, dt: number) {
       if (s.buildCell === null && Math.abs(s.x - c.x) < CELL / 2 && Math.abs(s.y - c.y) < CELL / 2 && !cellTaken(room, i)) s.buildCell = i;
     });
   }
+}
+
+/**
+ * Le joueur touche l'arène (coordonnées du jeu) : un refuge libre pour s'y rendre ; dans son refuge,
+ * un bouton (trône, porte, arme, réparation) ou une tourelle pour l'acheter ou l'améliorer,
+ * ou une case vide pour ouvrir le menu de construction. Renvoie ce qui s'est passé.
+ */
+export function playerTap(state: RefugeState, x: number, y: number): 'go' | 'bought' | 'poor' | 'cell' | 'none' {
+  const s = playerSurvivor(state);
+  if (!s || !s.alive || isPaused(state)) return 'none';
+  if (s.roomId === null) {
+    if (state.phase !== 'choose') return 'none';
+    const room = state.rooms.find((r) => r.owner === null && insideRoom(r, x, y, 40));
+    if (!room) return 'none';
+    s.path = [doorOutside(room, 50), roomCenter(room)];
+    return 'go';
+  }
+  const room = state.rooms[s.roomId];
+  if (state.phase !== 'siege') return 'none';
+  for (const pad of room.pads) {
+    if (dist(x, y, pad.x, pad.y) < PAD_RADIUS + 14) return buy(state, s, room, pad) ? 'bought' : 'poor';
+  }
+  for (const t of room.turrets) {
+    if (t.level > 0 && dist(x, y, t.x, t.y) < CELL / 2) return upgradeTurret(state, s, room, t) ? 'bought' : 'poor';
+  }
+  const cell = room.cells.findIndex((c, i) => Math.abs(x - c.x) < CELL / 2 && Math.abs(y - c.y) < CELL / 2 && !cellTaken(room, i));
+  s.buildCell = cell >= 0 && s.buildCell !== cell ? cell : null;
+  return s.buildCell !== null ? 'cell' : 'none';
 }
 
 // ---------- Phases ----------
