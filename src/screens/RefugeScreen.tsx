@@ -146,6 +146,9 @@ function refugeSound(ev: RefugeEvent, s: RefugeState, mine: number | null, demon
     case 'placed':
       if (s.survivors[ev.survivorId]?.isPlayer) audio.sfx('build');
       break;
+    case 'seated':
+      if (s.survivors[ev.survivorId]?.isPlayer) audio.sfx('levelup');
+      break;
     case 'heroActive':
       if (near(ev.roomId)) audio.sfx(ev.power === 'freeze' ? 'freeze' : 'explosion');
       break;
@@ -427,16 +430,20 @@ export function RefugeScreen({ setup, onFinish, onRetry, onMenu }: Props) {
     else haptics.error();
   }, []);
 
-  // Survivant : on ne se déplace plus au doigt, on touche (un refuge pour y aller, puis cases, tourelles, boutons).
-  // Démon : le joystick reste.
+  // Joystick pour le Démon, et pour le survivant tant qu'il court vers un refuge.
+  // Une fois dans sa chambre, il reste sur son trône : on touche les cases, les tourelles et les boutons.
+  const usesJoystick = () => {
+    const me = playerSurvivor(stateRef.current);
+    return demonRole || (me !== null && me.roomId === null);
+  };
   const onStart = (e: GestureResponderEvent) => {
-    if (demonRole) joystickStart(joystick, e.nativeEvent.pageX, e.nativeEvent.pageY);
+    if (usesJoystick()) joystickStart(joystick, e.nativeEvent.pageX, e.nativeEvent.pageY);
   };
   const onMove = (e: GestureResponderEvent) => {
-    if (demonRole) joystickMove(joystick, e.nativeEvent.pageX, e.nativeEvent.pageY);
+    if (joystick.active) joystickMove(joystick, e.nativeEvent.pageX, e.nativeEvent.pageY);
   };
   const onEnd = (e: GestureResponderEvent) => {
-    if (demonRole) {
+    if (joystick.active || usesJoystick()) {
       joystickEnd(joystick);
       return;
     }

@@ -63,7 +63,7 @@ Code : `src/modes/refuge/` (simulation `sim.ts`, Démon `demon.ts`, défenses `d
 
 - **Pouvoirs des survivants** (comme le Démon) : peu après le début du siège puis chaque minute, choisir un pouvoir nouveau ou plus fort — 💚 régénération de la porte, ☣️ tirs toxiques, 🎯 tourelle vivante (tirer même sur son trône), 💰 fortune, ❄️ gel (bouton : fige les attaquants) et 💥 onde de choc (bouton : explose les zombies). Les robots en reçoivent aussi. Web : `#refuge-heros`.
 
-- **Au toucher** (survivant) : pas de joystick. Pendant le choix, toute l'arène s'affiche et on touche un refuge libre pour y aller. Ensuite on reste sur son trône (il rapporte l'or et on tire de là) : toucher une case vide ouvre le menu de construction, toucher un bouton ou une tourelle l'achète ou l'améliore. Une flèche verte marque ce qu'on peut améliorer tout de suite.
+- **Trône** (survivant) : on court au joystick jusqu'à un refuge libre. Une fois dedans, le personnage va tout seul à son trône, y monte d'un petit saut et s'assoit (dossier derrière lui, accoudoirs devant) : il n'en bouge plus, il gagne l'or et tire de là. On touche une case vide pour construire, un bouton ou une tourelle pour l'acheter ou l'améliorer ; une flèche verte marque ce qu'on peut améliorer tout de suite.
 
 ## Mode Vagues
 

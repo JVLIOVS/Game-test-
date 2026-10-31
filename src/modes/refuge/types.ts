@@ -156,6 +156,8 @@ export interface Survivor {
   powerCooldowns: Partial<Record<HeroPower, number>>;
   /** Animation du tir. */
   shootAnim: number;
+  /** Assis sur son trône : 0 debout, monte jusqu'à 1 (petit saut puis assis). */
+  seat: number;
   /** Case vide sous les pieds (le joueur peut y construire). */
   buildCell: number | null;
   /** Robots : emplacement visé, chemin (entrée puis intérieur du refuge) et prochaine réflexion. */
@@ -234,6 +236,7 @@ export type RefugeEvent =
   | { type: 'demonPower'; power: DemonPower; level: number }
   | { type: 'demonActive'; power: DemonPower }
   | { type: 'zombieKilled' }
+  | { type: 'seated'; survivorId: number }
   | { type: 'heroPower'; survivorId: number; power: HeroPower; level: number }
   | { type: 'heroActive'; roomId: number; power: HeroPower }
   | { type: 'fire'; roomId: number; kind: 'arrow' | 'cannon' | 'laser' | 'zap' }

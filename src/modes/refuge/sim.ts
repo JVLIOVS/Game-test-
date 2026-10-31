@@ -83,6 +83,7 @@ export function createRefuge(setup: RefugeSetup = { role: 'survivor', character:
       inventory: [],
       weapon: 1,
       weaponCooldown: 0,
+      seat: 0,
       powers: {},
       powerCooldowns: {},
       shootAnim: 0,
@@ -287,9 +288,9 @@ function updateSurvivors(state: RefugeState, input: PlayerInput, dt: number) {
     let mx = 0;
     let my = 0;
     if (s.isPlayer) {
-      mx = input.moveX;
-      my = input.moveY;
-      // Sans doigt sur l'écran : le joueur va tout seul là où il a touché (un refuge), puis sur son trône.
+      // Joystick pour courir jusqu'à un refuge ; une fois dedans, il va tout seul s'asseoir sur son trône et n'en bouge plus.
+      mx = s.roomId === null ? input.moveX : 0;
+      my = s.roomId === null ? input.moveY : 0;
       if (mx === 0 && my === 0) {
         // Le refuge visé a été pris juste avant : il file vers le refuge libre le plus proche.
         const end = s.path[s.path.length - 1];
@@ -327,6 +328,7 @@ function updateSurvivors(state: RefugeState, input: PlayerInput, dt: number) {
       }
     }
     moveSurvivor(state, s, mx, my, dt);
+    updateSeat(state, s, dt);
     if (s.roomId === null || state.phase !== 'siege') continue;
     const room = state.rooms[s.roomId];
     // Or du générateur : tout l'or si on se tient dessus, une partie sinon.
@@ -368,21 +370,33 @@ function updateSurvivors(state: RefugeState, input: PlayerInput, dt: number) {
   }
 }
 
+/** Assis sur le trône : il s'y installe d'un petit saut quand il s'arrête dessus, et se lève s'il en part. */
+function updateSeat(state: RefugeState, s: Survivor, dt: number) {
+  const room = s.roomId !== null ? state.rooms[s.roomId] : null;
+  const on = room !== null && dist(s.x, s.y, room.gen.x, room.gen.y) < 10 && Math.hypot(s.vx, s.vy) < 40;
+  if (!on) {
+    s.seat = 0;
+    return;
+  }
+  if (s.seat === 0) {
+    s.seat = 0.001;
+  }
+  const before = s.seat;
+  s.seat = Math.min(1, s.seat + dt * 2.2);
+  if (before < 1 && s.seat >= 1) {
+    if (s.isPlayer) spawnBurst(state, room.gen.x, room.gen.y - 60, 20, 22, 'confetti', ['#FFD25A', '#FFF4C2', '#FFFFFF'], 1.1);
+    state.events.push({ type: 'seated', survivorId: s.id });
+  }
+}
+
 /**
- * Le joueur touche l'arène (coordonnées du jeu) : un refuge libre pour s'y rendre ; dans son refuge,
- * un bouton (trône, porte, arme, réparation) ou une tourelle pour l'acheter ou l'améliorer,
+ * Le joueur touche l'arène (coordonnées du jeu) : dans son refuge, un bouton (trône, porte, arme, réparation) ou une tourelle pour l'acheter ou l'améliorer,
  * ou une case vide pour ouvrir le menu de construction. Renvoie ce qui s'est passé.
  */
 export function playerTap(state: RefugeState, x: number, y: number): 'go' | 'bought' | 'poor' | 'cell' | 'none' {
   const s = playerSurvivor(state);
   if (!s || !s.alive || isPaused(state)) return 'none';
-  if (s.roomId === null) {
-    if (state.phase !== 'choose') return 'none';
-    const room = state.rooms.find((r) => r.owner === null && insideRoom(r, x, y, 40));
-    if (!room) return 'none';
-    s.path = [doorOutside(room, 50), roomCenter(room)];
-    return 'go';
-  }
+  if (s.roomId === null) return 'none';
   const room = state.rooms[s.roomId];
   if (state.phase !== 'siege') return 'none';
   for (const pad of room.pads) {

@@ -395,7 +395,7 @@ export const en: Record<keyof typeof fr, string> = {
   'ally.archer.desc': 'She keeps shooting anything that gets near your door.',
   'ally.banker': 'Banker',
   'ally.banker.desc': 'He keeps bringing you gold, even away from the throne.',
-  'refuge.choose': 'Tap a free hideout to take shelter! {n}s',
+  'refuge.choose': 'Run into a free hideout! {n}s',
   'refuge.siege': 'Siege · {time}',
   'refuge.alive': '{n}/6 alive',
   'refuge.demon': 'Demon lvl {n}',

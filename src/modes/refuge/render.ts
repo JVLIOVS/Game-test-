@@ -92,35 +92,53 @@ const THRONE = [
   { wood: '#FFE070', trim: '#D8A030', cushion: '#5A2A86' },
 ];
 
-function drawGenerator(canvas: SkCanvas, room: Room) {
+/**
+ * Trône, en deux morceaux pour qu'on voie le personnage assis dedans :
+ * le dossier (dessiné derrière lui) et le siège avec ses accoudoirs (dessinés devant ses jambes).
+ */
+function drawThroneBack(canvas: SkCanvas, room: Room) {
   const g = room.gen;
-  const th = THRONE[Math.min(THRONE.length - 1, g.level)];
-  const back = room.doorSide === 'bottom' ? -1 : 1; // le dossier est du côté du fond de la chambre
-  canvas.save();
-  canvas.translate(g.x, g.y);
-  // Halo royal à partir de l'or
-  if (g.level >= 4) canvas.drawCircle(0, -14, 34 + Math.sin(g.spin * 2) * 3, fill('rgba(255,210,90,0.22)'));
-  // Dossier haut, avec des pointes comme une couronne
-  const by = back < 0 ? -62 : -30;
-  canvas.drawRRect(Skia.RRectXY(Skia.XYWHRect(-22, by, 44, 40), 8, 8), fill(C.outline));
-  canvas.drawRRect(Skia.RRectXY(Skia.XYWHRect(-19, by + 3, 38, 35), 6, 6), fill(th.wood));
-  for (const px of [-14, 0, 14]) {
-    canvas.drawPath(cached(`thronePeak${px}`, (b) => b.moveTo(px - 6, 0).lineTo(px, -12).lineTo(px + 6, 0).close()), fill(th.trim));
-  }
-  canvas.save();
-  canvas.translate(0, by);
-  for (const px of [-14, 0, 14]) canvas.drawPath(cached(`thronePeakB${px}`, (b) => b.moveTo(px - 6, 2).lineTo(px, -10).lineTo(px + 6, 2).close()), fill(th.wood));
-  if (g.level >= 5) for (const px of [-14, 0, 14]) canvas.drawCircle(px, -4, 3, fill(px === 0 ? '#5BE0FF' : '#E0533D'));
-  canvas.restore();
-  canvas.drawRRect(Skia.RRectXY(Skia.XYWHRect(-12, by + 9, 24, 24), 5, 5), fill(th.cushion));
-  // Siège et accoudoirs
-  canvas.drawRRect(Skia.RRectXY(Skia.XYWHRect(-26, -16, 52, 24), 8, 8), fill(C.outline));
-  canvas.drawRRect(Skia.RRectXY(Skia.XYWHRect(-23, -13, 46, 18), 6, 6), fill(th.wood));
-  canvas.drawRRect(Skia.RRectXY(Skia.XYWHRect(-16, -12, 32, 12), 5, 5), fill(th.cushion));
-  for (const ax of [-26, 18]) canvas.drawRRect(Skia.RRectXY(Skia.XYWHRect(ax, -22, 8, 22), 3, 3), fill(th.trim));
-  // Petites pièces : le niveau du trône
-  for (let i = 0; i < g.level; i++) canvas.drawCircle(-15 + i * 6, 12, 2.4, fill('#FFD25A'));
-  canvas.restore();
+  const lv = Math.min(THRONE.length - 1, g.level);
+  drawSprite(canvas, `throneBack|${lv}`, g.x, g.y, [-44, -112, 88, 116], (c) => {
+    const th = THRONE[lv];
+    // Halo royal à partir de l'or
+    if (lv >= 4) c.drawCircle(0, -56, 42, fill('rgba(255,210,90,0.22)'));
+    // Grand dossier arrondi, surmonté de pointes comme une couronne
+    c.drawRRect(Skia.RRectXY(Skia.XYWHRect(-31, -94, 62, 84), 14, 14), fill(C.outline));
+    c.drawRRect(Skia.RRectXY(Skia.XYWHRect(-27, -90, 54, 78), 11, 11), fill(th.wood));
+    for (const px of [-18, 0, 18]) {
+      c.drawPath(cached(`thronePeakO${px}`, (b) => b.moveTo(px - 9, -88).lineTo(px, px === 0 ? -110 : -104).lineTo(px + 9, -88).close()), fill(C.outline));
+      c.drawPath(cached(`thronePeakI${px}`, (b) => b.moveTo(px - 6, -89).lineTo(px, px === 0 ? -105 : -99).lineTo(px + 6, -89).close()), fill(th.trim));
+    }
+    if (lv >= 5) for (const px of [-18, 0, 18]) c.drawCircle(px, -96, 3.5, fill(px === 0 ? '#5BE0FF' : '#E0533D'));
+    // Coussin du dossier, avec un liseré doré
+    c.drawRRect(Skia.RRectXY(Skia.XYWHRect(-19, -80, 38, 60), 9, 9), fill(th.cushion));
+    c.drawRRect(Skia.RRectXY(Skia.XYWHRect(-19, -80, 38, 60), 9, 9), stroke(th.trim, 2.5));
+    // Pieds du trône (on les voit dépasser derrière le siège)
+    c.drawRect(Skia.XYWHRect(-30, -14, 8, 16), fill(th.trim));
+    c.drawRect(Skia.XYWHRect(22, -14, 8, 16), fill(th.trim));
+  });
+}
+
+function drawThroneFront(canvas: SkCanvas, room: Room) {
+  const g = room.gen;
+  const lv = Math.min(THRONE.length - 1, g.level);
+  drawSprite(canvas, `throneFront|${lv}`, g.x, g.y, [-42, -46, 84, 62], (c) => {
+    const th = THRONE[lv];
+    // Bord avant du siège : il cache les hanches du personnage assis
+    c.drawRRect(Skia.RRectXY(Skia.XYWHRect(-30, -22, 60, 26), 8, 8), fill(C.outline));
+    c.drawRRect(Skia.RRectXY(Skia.XYWHRect(-27, -19, 54, 20), 6, 6), fill(th.wood));
+    c.drawRect(Skia.XYWHRect(-27, -19, 54, 5), fill(th.cushion));
+    // Accoudoirs de chaque côté, avec une boule dorée au bout
+    for (const ax of [-38, 26]) {
+      c.drawRRect(Skia.RRectXY(Skia.XYWHRect(ax, -40, 12, 42), 5, 5), fill(C.outline));
+      c.drawRRect(Skia.RRectXY(Skia.XYWHRect(ax + 2.5, -37.5, 7, 37), 3.5, 3.5), fill(th.trim));
+      c.drawCircle(ax + 6, -40, 6, fill(C.outline));
+      c.drawCircle(ax + 6, -40, 4, fill('#FFD25A'));
+    }
+    // Petites pièces : le niveau du trône
+    for (let i = 0; i < g.level; i++) c.drawCircle(-15 + i * 6, 10, 2.4, fill('#FFD25A'));
+  });
 }
 
 /** Alpha arrondi : évite de créer un pinceau par valeur. */
@@ -665,19 +683,28 @@ function drawAllyShape(canvas: SkCanvas, a: Ally, time: number) {
 
 /** Survivant depuis le cache d'images : 8 poses de marche ou de repos, dans les deux sens. */
 function drawSurvivor(canvas: SkCanvas, s: Survivor, time: number) {
-  const walking = s.walkTime > 0;
+  const walking = s.walkTime > 0 && s.seat === 0;
   const pose = walking ? poseOf(s.walkTime * 16) : poseOf(time * 3);
-  const key = `s|${s.id % HAIRS.length}|${s.character}|${s.shirt}|${s.dirX > 0 ? 1 : -1}|${walking ? 1 : 0}|${pose}`;
-  drawSprite(canvas, key, s.x, s.y, [-40, -86, 80, 128], (c) =>
+  // Sur le trône : un petit saut, puis il est assis (plus haut, jambes repliées, face à nous).
+  const seated = s.seat >= 0.55;
+  const hop = s.seat > 0 && s.seat < 1 ? Math.sin(s.seat * Math.PI) * 26 : 0;
+  const lift = s.seat > 0 ? Math.min(1, s.seat / 0.55) * SEAT_LIFT : 0;
+  const dir = seated ? 1 : s.dirX > 0 ? 1 : -1;
+  const key = `s|${s.id % HAIRS.length}|${s.character}|${s.shirt}|${dir}|${walking ? 1 : 0}|${seated ? 1 : 0}|${pose}`;
+  drawSprite(canvas, key, s.x, s.y - lift - hop, [-40, -86, 80, 128], (c) =>
     drawSurvivorShape(
       c,
-      { ...s, x: 0, y: 0, dirX: s.dirX > 0 ? 1 : -1, walkTime: walking ? ((pose + 0.5) / 8) * ((Math.PI * 2) / 16) : 0 },
+      { ...s, x: 0, y: 0, dirX: dir, walkTime: walking ? ((pose + 0.5) / 8) * ((Math.PI * 2) / 16) : 0 },
       walking ? 0 : ((pose + 0.5) / 8) * ((Math.PI * 2) / 3),
+      seated,
     ),
   );
 }
 
-function drawSurvivorShape(canvas: SkCanvas, s: Survivor, time: number) {
+/** Hauteur du siège du trône : le personnage assis est dessiné plus haut, sur le coussin. */
+const SEAT_LIFT = 16;
+
+function drawSurvivorShape(canvas: SkCanvas, s: Survivor, time: number, seated = false) {
   const walking = s.walkTime > 0;
   const phase = Math.sin(s.walkTime * 16);
   const bob = walking ? Math.abs(phase) * 4 : Math.sin(time * 3) * 1;
@@ -690,9 +717,18 @@ function drawSurvivorShape(canvas: SkCanvas, s: Survivor, time: number) {
   // Jambes
   const lf = walking ? phase * 4 : 0;
   const pants = ch === 'mecano' ? '#2E5E9A' : ch === 'gardien' ? '#3A3F4C' : '#6E4A8A';
-  for (const [lx, o] of [[-6, lf], [6, -lf]] as const) {
-    canvas.drawCircle(lx, -3 + o, 6.5, ol);
-    canvas.drawCircle(lx, -3 + o, 4.5, fill(pants));
+  if (seated) {
+    // Assis : les jambes pendent devant le siège, les chaussures dépassent dessous.
+    for (const lx of [-7, 7]) {
+      canvas.drawRRect(Skia.RRectXY(Skia.XYWHRect(lx - 5.5, -6, 11, 28), 5, 5), ol);
+      canvas.drawRRect(Skia.RRectXY(Skia.XYWHRect(lx - 3.5, -4, 7, 22), 3.5, 3.5), fill(pants));
+      canvas.drawOval(Skia.XYWHRect(lx - 6, 17, 12, 8), fill('#2B2238'));
+    }
+  } else {
+    for (const [lx, o] of [[-6, lf], [6, -lf]] as const) {
+      canvas.drawCircle(lx, -3 + o, 6.5, ol);
+      canvas.drawCircle(lx, -3 + o, 4.5, fill(pants));
+    }
   }
   canvas.translate(0, -bob);
   // Corps
@@ -775,7 +811,7 @@ function drawSurvivorShape(canvas: SkCanvas, s: Survivor, time: number) {
 function drawCrown(canvas: SkCanvas, state: RefugeState) {
   const f = state.finale!;
   const w = f.winner >= 0 ? state.survivors[f.winner] : state.demon;
-  const headY = w.y - (f.winner >= 0 ? 72 : 150);
+  const headY = w.y - (f.winner >= 0 ? 72 + (state.survivors[f.winner].seat > 0 ? SEAT_LIFT : 0) : 150);
   const land = Math.min(1, f.t / 1.1);
   const ease = 1 - Math.pow(1 - land, 3);
   const y = headY - (1 - ease) * 260;
@@ -836,7 +872,7 @@ function drawDevour(canvas: SkCanvas, state: RefugeState, survivorId: number, t:
     canvas.save();
     canvas.translate(size * 0.3 + Math.sin(t * 60) * 2 * k, size * 0.86);
     canvas.scale(k * 1.15, k * 1.15);
-    drawSurvivor(canvas, { ...s, x: 0, y: 0, alive: true, walkTime: 0, shootAnim: 0, dirX: 1 }, state.time);
+    drawSurvivor(canvas, { ...s, x: 0, y: 0, alive: true, walkTime: 0, shootAnim: 0, dirX: 1, seat: 0 }, state.time);
     canvas.restore();
     if (t < 1) drawBang(canvas, size * 0.3, size * 0.2, k);
   }
@@ -914,9 +950,7 @@ function cameraFocus(state: RefugeState) {
 export function drawRefuge(canvas: SkCanvas, state: RefugeState, view: RefugeView, fonts: { big: SkFont | null; small: SkFont | null }, joystick: JoystickState, dt: number) {
   const player = playerSurvivor(state);
   const mine = (room: Room) => player !== null && room.owner === player.id;
-  // Vue d'ensemble : bouton œil, ou pendant que tu choisis ton refuge (il suffit d'en toucher un).
-  const choosing = player !== null && player.alive && player.roomId === null && state.phase === 'choose';
-  const overview = (view.overview || choosing) && state.phase !== 'arrival';
+  const overview = view.overview && state.phase !== 'arrival';
   // Vue d'ensemble : toute l'arène tient dans l'espace sous l'interface.
   const overviewScale = Math.min(view.width / (ARENA_W + 60), (view.height - view.top - 40) / (ARENA_H + 60));
   const focus = overview ? { x: ARENA_W / 2, y: ARENA_H / 2 } : cameraFocus(state);
@@ -973,7 +1007,7 @@ export function drawRefuge(canvas: SkCanvas, state: RefugeState, view: RefugeVie
     if (mine(room) && player && player.alive && state.phase === 'siege') drawGrid(canvas, room, player.buildCell, state.time);
     drawWalls(canvas, room);
     drawDoor(canvas, room);
-    drawGenerator(canvas, room);
+    drawThroneBack(canvas, room);
   }
 
   // Emplacements d'achat : seulement dans ton refuge (pour rester lisible)
@@ -986,6 +1020,8 @@ export function drawRefuge(canvas: SkCanvas, state: RefugeState, view: RefugeVie
   // Personnages et tourelles, triés en profondeur
   const drawables: { y: number; draw: () => void }[] = [];
   for (const room of state.rooms) {
+    // L'avant du trône passe devant celui qui est assis (juste après lui dans l'ordre de dessin).
+    if (visible(room.gen.x, room.gen.y)) drawables.push({ y: room.gen.y + 0.5, draw: () => drawThroneFront(canvas, room) });
     for (const t of room.turrets) if (t.level > 0 && visible(t.x, t.y)) drawables.push({ y: t.y, draw: () => drawTurret(canvas, t, state.time) });
     for (const a of room.allies) if (visible(a.x, a.y)) drawables.push({ y: a.y, draw: () => drawAlly(canvas, a, state.time) });
     for (const art of room.artifacts) {
@@ -1001,7 +1037,7 @@ export function drawRefuge(canvas: SkCanvas, state: RefugeState, view: RefugeVie
       draw: () => {
         drawSurvivor(canvas, s, state.time);
         // Éclair du tir quand il tire lui-même sur les ennemis
-        if (s.shootAnim > 0.5) canvas.drawCircle(s.x + s.dirX * 22, s.y - 34, 8 * s.shootAnim, fill('rgba(255,230,140,0.8)'));
+        if (s.shootAnim > 0.5) canvas.drawCircle(s.x + (s.seat > 0 ? 22 : s.dirX * 22), s.y - 34 - (s.seat > 0 ? SEAT_LIFT : 0), 8 * s.shootAnim, fill('rgba(255,230,140,0.8)'));
       },
     });
   }
@@ -1033,16 +1069,6 @@ export function drawRefuge(canvas: SkCanvas, state: RefugeState, view: RefugeVie
     for (const t of myRoom.turrets) {
       const offer = turretOffer(myRoom, t);
       if (t.level > 0 && offer && player.gold >= offer.cost) drawUpBadge(canvas, t.x + 18, t.y - 40, state.time);
-    }
-  }
-  // Choix du refuge : les refuges libres clignotent, il suffit d'en toucher un.
-  if (player && player.roomId === null && state.phase === 'choose') {
-    for (const room of state.rooms) {
-      if (room.owner !== null) continue;
-      const r = room.inner;
-      const k = 0.75 + Math.sin(state.time * 6) * 0.25;
-      canvas.drawRect(Skia.XYWHRect(r.x, r.y, r.w, r.h), fill(rgba('255,210,90', 0.3 * k)));
-      canvas.drawRect(Skia.XYWHRect(r.x - 8, r.y - 8, r.w + 16, r.h + 16), stroke(rgba('255,210,90', k), 16));
     }
   }
   if (state.finale) drawCrown(canvas, state);
@@ -1094,7 +1120,8 @@ export function drawRefuge(canvas: SkCanvas, state: RefugeState, view: RefugeVie
     const by = room.doorSide === 'bottom' ? room.door.y - WALL - 12 : room.door.y + WALL + 4;
     if (!room.door.broken && owner.alive && !mine(room)) drawHpBar(canvas, room.door.x, by, 64, room.door.hp / room.door.maxHp, C.hpBuilding);
     if (fonts.small) {
-      const ny = room.doorSide === 'bottom' ? room.inner.y - WALL - 8 : room.inner.y + room.inner.h + WALL + 22;
+      // Le prénom passe au-dessus du grand dossier du trône quand il est contre ce mur.
+      const ny = room.doorSide === 'bottom' ? Math.min(room.inner.y - WALL - 8, room.gen.y - 116) : room.inner.y + room.inner.h + WALL + 22;
       drawOutlinedText(canvas, owner.alive ? owner.name : `× ${owner.name}`, room.door.x, ny, fonts.small, owner.alive ? C.white : '#8E8A9E');
     }
   }

@@ -129,5 +129,5 @@ export function botThink(state: RefugeState, s: Survivor, dt: number) {
   // Des ennemis à la porte : il quitte son trône pour tirer lui-même. Sinon, il reste assis pour l'or.
   const attackers = state.zombies.filter((z) => guards(room, z.x, z.y)).length + (guards(room, state.demon.x, state.demon.y) ? 3 : 0);
   const front = room.pads.find((p) => p.kind === 'weapon')!;
-  s.goal = attackers >= 3 ? { x: front.x + (room.doorSide === 'bottom' ? 0 : 0), y: front.y + (room.doorSide === 'bottom' ? -40 : 40) } : { x: room.gen.x, y: room.gen.y + PAD_RADIUS * 0.3 };
+  s.goal = attackers >= 3 ? { x: front.x + (room.doorSide === 'bottom' ? 0 : 0), y: front.y + (room.doorSide === 'bottom' ? -40 : 40) } : { x: room.gen.x, y: room.gen.y };
 }

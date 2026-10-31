@@ -393,7 +393,7 @@ export const fr = {
   'ally.archer.desc': 'Elle tire sans arrêt sur ce qui approche de ta porte.',
   'ally.banker': 'Banquier',
   'ally.banker.desc': 'Il te rapporte de l’or en continu, même loin du trône.',
-  'refuge.choose': 'Touche un refuge libre pour t’y abriter ! {n} s',
+  'refuge.choose': 'Cours dans un refuge libre ! {n} s',
   'refuge.siege': 'Siège · {time}',
   'refuge.alive': '{n}/6 en vie',
   'refuge.demon': 'Démon niv. {n}',
